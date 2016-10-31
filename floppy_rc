@@ -1,0 +1,8 @@
+# Default megs: 32
+# default romimage and vgaromimage
+memory: guest=32, host=32
+floppya: 1_44=floppy.img, status=inserted
+boot: floppy
+log: floppy_out.txt
+mouse: enabled=0
+# default mouse disabled
