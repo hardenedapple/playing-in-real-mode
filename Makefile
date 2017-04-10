@@ -12,3 +12,6 @@ via_c: test.ld test.c
 run:
 	qemu-system-x86_64 -enable-kvm -drive file=floppy.img,index=0,if=floppy,format=raw -boot order=a
 
+clean:
+	dd if=/dev/zero of=floppy.img bs=512 count=2880
+	+rm test-c.bin test.o test.bin
