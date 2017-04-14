@@ -4,8 +4,8 @@ floppy: test.S
 	dd if=test.bin of=floppy.img conv=notrunc
 
 via_c: test.ld test.c
-	gcc -c -g -Os -ffreestanding -Wall -Werror test.c -o test.o
-	ld -static -Ttest.ld -nostdlib --nmagic -o test.elf test.o
+	gcc -c -Os -m16 -march=i386 -ffreestanding -Wall -Werror test.c -o test.o
+	ld -melf_i386 -static -Ttest.ld -nostdlib --nmagic -o test.elf test.o
 	objcopy -O binary test.elf test-c.bin
 	dd if=test-c.bin of=floppy.img conv=notrunc
 
