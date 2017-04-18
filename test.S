@@ -4,27 +4,24 @@
 _start:                 # code entry point
 
     jmp _boot
-    # NOTE Don't need the carriage return, but it does put the cursor at the
-    # start of a new line instead of just moving it down one line.
-    welcome: .asciz "Hello, World\n\r"
-
-    .macro mWriteString str
-        leaw \str, %si
-        call .writeStringIn
-    .endm
-
-    .writeStringIn:
-        lodsb
-        orb %al, %al
-        js .writeStringOut
-        movb $0x0e, %ah
-        int $0x10
-        jmp .writeStringIn
-    .writeStringOut:
-    ret
-
+    data : .byte 'X'
+    data1: .byte 'Y'
 _boot:
-    mWriteString welcome
+    movw $0x7c0, %ax
+    movw %ax, %ds
+    movb data - _start, %al # Don't have to rely on the knowledge that the jmp
+                            # instruction will be two bytes
+    movb $0x0e, %ah
+    int $0x10
+    movb 0x03, %al
+    # movb $0x0e, %ah     # Interrupt list says there is no return value from
+                            #  int $0x10,
+                            #  vimcmd: e +/AH\ =\ 0E/ saved_docs/BIOSinterrupts/INTERRUP.A
+                            #  Hence we don't have to put this here, as it
+                            #  should already be there.
+    int $0x10
+_freeze:
+    jmp _freeze
 
     . = _start + 510    # move to 510th byte from 0 pos
     .byte 0x55          # append boot signature
