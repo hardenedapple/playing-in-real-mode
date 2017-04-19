@@ -26,70 +26,15 @@ _start:
     # 80 tracks ... each contains
     # 18 sectors ... each contains
     # 512 bytes.
-    .macro mReadSectorFromFloppy num
+    readSectorFromFloppy:
         # Reads into the data buffer pointed to by %es:%bx
-        # This will be my little record to say how many times I've attempted to
-        # call this function.
+        # Store a  record to say how many times I've attempted to read the
+        # data.
         pushw $0x00
         jmp 3f
     1:
         # Failure condition -- try again up to three times
         popw %ax
-        # cmp and jle
-        # cmp arg2, arg1 (order because of GAS syntax)
-        # cmp effectively does arg2 - arg1
-        # arg2 < arg1
-        #   Both are positive.
-        #       no overflow
-        #           SF is set (because sign is now negative)
-        #           OF is not set (because there was no overflow).
-        #       overflow not possible because (negative range of values
-        #       available is greater than possible difference between positive
-        #       values).
-        #
-        #   If arg2 is negative and arg1 is positive
-        #       no overflow
-        #           SF is set (always going to be negative)
-        #           OF is not set
-        #       overflow
-        #           SF is not set (because of the overflow)
-        #           OF is set
-        #
-        #   Both are negative
-        #       no overflow
-        #           SF is set (negative addition, arg2 smaller => abs(arg2) greater)
-        #           OF not set
-        #       overflow not possible (abs(arg2) > abs(arg1))
-        #
-        # arg2 > arg1
-        #   Both positive, 
-        #       no overflow
-        #           SF not set
-        #           OF not set
-        #       overflow not possible
-        #
-        #   arg1 negative, arg2 positive
-        #       no overflow
-        #           SF not set
-        #           OF not set
-        #       overflow
-        #           SF set (wrap around from positive)
-        #           OF set
-        #
-        #   Both negative
-        #       no overflow
-        #           SF not set (arg2 > arg1, both negative, abs(arg1) greater)
-        #           OF not set
-        #       overflow not possible because difference not greater than
-        #       positive range.
-        #
-        # al is never negative here, so I would be just as well served with jbe
-        # arg2 < arg1
-        #   Both are always positive
-        #       Will have to carry, arg2 - arg1 would go negative.
-        # arg2 > arg1
-        #   Both are always positive
-        #       Will not carry, arg2 - arg1 is fine.
         cmp $0x3, %al
         jbe 2f
         mPrintString msgFail
@@ -100,11 +45,18 @@ _start:
         movb $0x02, %ah # Read disk function
         movb $0x01, %al # Number of sectors to read
         movb $0x00, %ch # cylinder number
+        # sector number in bits 0-5,
+        # high two bits of cylinder in 6-7 for hard-disks
+        # that doesn't matter much, because I'm not using a hard-disk ... but
+        # it's nice to know.
+        # Take this value from the argument passed by the caller.
+        # Getting it from the stack makes the most sense, as ax, cx, and dx are
+        # used for the BIOS call, and bx is used as a destination.
+        # Real mode is limited in what mov instructions are allowed, we have to
+        # load into the accumulator register, and we have to either load from
+        # %bx + %si or from %bp + %di.
+        movb 0x2(%bp),  %cl
         movb $0x00, %dh # head number
-        movb \num,  %cl # sector number in bits 0-5,
-                        # high two bits of cylinder in 6-7 for hard-disks
-                        # that doesn't matter much, because I'm not using a
-                        # hard-disk ... but it's nice to know.
         movb $0x00, %dl # drive number
         int $0x13
         jc 1b
@@ -118,7 +70,10 @@ _start:
         #   AL number of sectors transferred.
         cmpb $0x01, %al
         jne 1b
-    .endm
+    .LreadSectorFromFloppy:
+        # Just to remove the counter on the stack
+        popw %ax
+        ret
 
     DisplayData:
     .LDisplayDataIn:
@@ -136,9 +91,14 @@ _boot:
     movw $0x9000, %ax
     movw %ax, %es
     xorw %bx, %bx
-    mReadSectorFromFloppy $2
+    pushw $2
+    enter $0, $0
+    call readSectorFromFloppy
     call DisplayData
-    mReadSectorFromFloppy $3
+    # Don't know why this isn't working TODO
+    # Have to walk through the execution and see what happens.
+    movw $3, 0x2(%bp)
+    call readSectorFromFloppy
     call DisplayData
 _freeze:
     jmp _freeze
