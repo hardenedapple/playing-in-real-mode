@@ -1,4 +1,18 @@
 .code16
+# n.b. You can name the section whatever you want ...
+# Using the below declaration, and the flag --section-start=mytext=0x7c00
+# instead of -Ttext 0x7c00 in the linker arguments, you get the same file.
+# The number "2" means that the SHF_ALLOC flag is set in the section. This
+# makes sure that the data is put into the resulting output file.
+#
+# The format of this declaration when outputting ELF files (which are outputed
+# by the assembler by default on my machine & setup) can be found in
+# "(as)Section" info page.
+# vimcmd: term info as -n Section
+# Note that both section header *flags* and *type* can be specified.
+# See the difference in the elf(5) man page.
+# vimcmd: Man elf
+# .section mytext, "2"
 .text
     .globl _start
 _start:
@@ -55,6 +69,7 @@ _start:
         # Real mode is limited in what mov instructions are allowed, we have to
         # load into the accumulator register, and we have to either load from
         # %bx + %si or from %bp + %di.
+        # http://stackoverflow.com/questions/15353616/illegal-use-of-register-in-indirect-addressing
         movb 0x2(%bp),  %cl
         movb $0x00, %dh # head number
         movb $0x00, %dl # drive number
@@ -95,8 +110,6 @@ _boot:
     enter $0, $0
     call readSectorFromFloppy
     call DisplayData
-    # Don't know why this isn't working TODO
-    # Have to walk through the execution and see what happens.
     movw $3, 0x2(%bp)
     call readSectorFromFloppy
     call DisplayData
