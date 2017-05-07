@@ -1,29 +1,13 @@
 vshcmd: > as boot.asm -o boot.o
 vshcmd: > ld --oformat=binary -Ttext 0x7c00 boot.o -o boot
-bootloader [14:59:16] $ 
-vshcmd: > nasm nasmboot.asm -f bin -o nasmboot.bin
 vshcmd: > diff <(xxd nasmboot.bin) <(xxd boot)
 7c7
 < 00000060: 0066 678b 0666 678d 7601 3c00 75f0 8006  .fg..fg.v.<.u...
 ---
 > 00000060: 0067 668b 0667 668d 7601 3c00 75f0 8006  .gf..gf.v.<.u...
 bootloader [14:59:17] $ 
-vshcmd: > ld -e 0x7c00 --script boot.ld boot.o -o boot
-vshcmd: > disasbytes intel "e9e6 00e8 1000 ac3c 0075 f880 0638 7d01"  -mi386 -Maddr16,data16
-
-/tmp/tmp.agYkmvAQpS:     file format binary
-
-
-Disassembly of section .data:
-
-00000000 <.data>:
-   0:	e9 e6 00             	jmp    0xe9
-   3:	e8 10 00             	call   0x16
-   6:	ac                   	lods   al,BYTE PTR ds:[si]
-   7:	3c 00                	cmp    al,0x0
-   9:	75 f8                	jne    0x3
-   b:	80 06 38 7d 01       	add    BYTE PTR ds:0x7d38,0x1
-bootloader [14:37:31] $ 
+vshcmd: > nasm nasmboot.asm -f bin -o nasmboot.bin
+bootloader [15:31:51] $ 
 vshcmd: > qemu-system-x86_64 -enable-kvm -drive file=nasmboot.bin,format=raw
 bootloader [13:20:55] $ 
 vshcmd: > qemu-system-x86_64 -enable-kvm -drive file=boot,format=raw

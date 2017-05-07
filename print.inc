@@ -87,6 +87,7 @@ hexloop:
     ret
 
 ;----------------------
+bits 32
 dochar32:
     call cprint32              ; print one character
 sprint32:
@@ -138,3 +139,5 @@ hexloop32:
    call sprint32
 
    ret
+
+bits 16

@@ -29,25 +29,28 @@ start:
     or al,1         ; set pmode bit
     mov  cr0, eax
 
-    mov  bx, 0x08   ; select descriptor 1
-    mov  ds, bx   ; 8h = 1000b
+    mov  bx, 0x10   ; select descriptor 1
+    mov  ds, bx   ; 10h = 10000b
+    jmp  8:0h     ; jmp to 32 bit modes.
+
+finalrestingplace:
+    bits 32
+
     xor ecx, ecx
     mov cx, [testdata]
     mov [reg32], ecx
     call printreg32
     xor ecx, ecx
     mov cx, [testdata]
-    and al,0xFE     ; back to realmode
+    jmp $
+    ; Can't interrupt the program while all the interrupts are in 16 bit code.
+    ; ... or can we?
+    ; It seems perfectly possible (considering the complexity of the processor)
+    ; that the segments for interrupts are stored somewhere, and the segments
+    ; are switched out when an interrupt is recieved.
+    ; sti
 
-    mov  cr0, eax   ; by toggling bit again
-    pop ds      ; get back old segment
-
-    sti
-
-    mov [reg16], cx
-    call printreg16
-    jmp $      ; loop forever
-
+    bits 16
 
  
 ;------------------------------------
@@ -66,6 +69,11 @@ gdtinfo:
     dd gdt         ;start of table
  
 gdt:        dd 0, 0
+codedesc    db 0xff, 0xff 
+; Know that finalrestingplace is less than one word in size, because it fits in
+; the MBR.
+            dw finalrestingplace
+            db 0, 10011010b, 11001111b, 0
 flatdesc    db 0xff, 0xff, 0, 0, 0, 10010010b, 11001111b, 0
 gdt_end:
  
