@@ -1,5 +1,5 @@
 .code16
-.text
+.text 0
     .globl _start
 
 _start:  
@@ -56,7 +56,7 @@ _codestart:
     jmp .
 
 
-.data
+.text 1
 # Data section -- using text subsection so that I can use the 
 xpos: .byte 0
 ypos: .byte 0
@@ -75,5 +75,5 @@ gdt:        .long 0, 0  # entry 0 is always unused
 flatdesc:    .byte 0xff, 0xff, 0, 0, 0, 0b10010010, 0b11001111, 0
 gdt_end:
  
-.section "bootablemarker", "2"
+    . = _start + 510
     .byte 0x55, 0xAA

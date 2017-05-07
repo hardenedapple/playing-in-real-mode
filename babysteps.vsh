@@ -1,12 +1,13 @@
 vshcmd: > as boot.asm -o boot.o
-vshcmd: > ld --script boot.ld boot.o -o boot
+vshcmd: > ld --oformat=binary -Ttext 0x7c00 boot.o -o boot
+bootloader [14:59:16] $ 
 vshcmd: > nasm nasmboot.asm -f bin -o nasmboot.bin
 vshcmd: > diff <(xxd nasmboot.bin) <(xxd boot)
 7c7
 < 00000060: 0066 678b 0666 678d 7601 3c00 75f0 8006  .fg..fg.v.<.u...
 ---
 > 00000060: 0067 668b 0667 668d 7601 3c00 75f0 8006  .gf..gf.v.<.u...
-bootloader [14:42:23] $ 
+bootloader [14:59:17] $ 
 vshcmd: > ld -e 0x7c00 --script boot.ld boot.o -o boot
 vshcmd: > disasbytes intel "e9e6 00e8 1000 ac3c 0075 f880 0638 7d01"  -mi386 -Maddr16,data16
 
