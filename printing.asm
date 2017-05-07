@@ -46,6 +46,7 @@ hexloop:
     call sprint
     ret
 
+.code32
 dochar32:
     call cprint32
 sprint32:
@@ -97,3 +98,4 @@ hexloop32:
     movl $outstr32, %esi
     call sprint32
     ret
+.code16

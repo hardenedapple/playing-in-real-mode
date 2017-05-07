@@ -36,12 +36,13 @@ start:
 finalrestingplace:
     bits 32
 
+    ; The big question is whether this is causing a whole load of exceptions,
+    ; but I'm not seeing them because I've cleared interrupts.
+
     xor ecx, ecx
     mov cx, [testdata]
     mov [reg32], ecx
     call printreg32
-    xor ecx, ecx
-    mov cx, [testdata]
     jmp $
     ; Can't interrupt the program while all the interrupts are in 16 bit code.
     ; ... or can we?

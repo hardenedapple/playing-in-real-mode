@@ -1,17 +1,18 @@
 vshcmd: > as boot.asm -o boot.o
 vshcmd: > ld --oformat=binary -Ttext 0x7c00 boot.o -o boot
-vshcmd: > diff <(xxd nasmboot.bin) <(xxd boot)
-7c7
-< 00000060: 0066 678b 0666 678d 7601 3c00 75f0 8006  .fg..fg.v.<.u...
----
-> 00000060: 0067 668b 0667 668d 7601 3c00 75f0 8006  .gf..gf.v.<.u...
-bootloader [14:59:17] $ 
 vshcmd: > nasm nasmboot.asm -f bin -o nasmboot.bin
-bootloader [15:31:51] $ 
+vshcmd: > diff <(xxd nasmboot.bin) <(xxd boot)
+bootloader [16:20:29] $ bootloader [16:20:29] $ bootloader [16:20:29] $ bootloader [16:20:29] $ 
 vshcmd: > qemu-system-x86_64 -enable-kvm -drive file=nasmboot.bin,format=raw
-bootloader [13:20:55] $ 
+bootloader [16:16:04] $ bootloader [16:16:06] $ 
 vshcmd: > qemu-system-x86_64 -enable-kvm -drive file=boot,format=raw
-bootloader [12:55:33] $ 
+bootloader [16:20:41] $ 
+vshcmd: > asbytes intel 'bits 16\r\n jmp 8:0h'
+00000000: ea 00 00 08 00                                   .....
+bootloader [16:21:11] $ 
+vshcmd: > asbytes att '.code16; ljmp  $8, $0'
+00000000: ea 00 00 08 00                                   .....
+bootloader [16:15:02] $ 
 vshcmd: > bochs 'floppya: 1_44=nasmboot.bin, status=inserted'
 ========================================================================
                        Bochs x86 Emulator 2.6.9

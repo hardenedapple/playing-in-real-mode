@@ -36,24 +36,18 @@ _codestart:
 
     # Use the protected mode version of segments, and load some data into a
     # register using it.
-    movw $0x08, %bx
+    movw $0x10, %bx
     movw %bx, %ds
+    ljmp $8, $0
+
+finalrestingplace:
+    .code32
     xorl %ecx, %ecx
     movw (testdata), %cx
     movl %ecx, (reg32)
     call printreg32
-    xorl %ecx, %ecx
-    movw (testdata), %cx
-    andb $0xFE, %al
-    movl %eax, %cr0
-    popw %ds
-
-    sti
-
-    movw %cx, (reg16)
-    call printreg16
-
     jmp .
+    .code16
 
 
 .text 1
@@ -72,6 +66,11 @@ gdtinfo:
     .long gdt         #start of table
  
 gdt:        .long 0, 0  # entry 0 is always unused
+codedesc:   .byte 0xff, 0xff 
+# Know that finalrestingplace is less than one word in size, because it fits in
+# the MBR.
+            .word finalrestingplace
+            .byte 0, 0b10011010, 0b11001111, 0
 flatdesc:    .byte 0xff, 0xff, 0, 0, 0, 0b10010010, 0b11001111, 0
 gdt_end:
  
