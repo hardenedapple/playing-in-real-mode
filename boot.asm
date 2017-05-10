@@ -2,6 +2,13 @@
 .text 0
     .globl _start
 
+.macro datastart
+    .text 1
+.endm
+.macro dataend
+    .text 0
+.endm
+
 _start:
     call clearAll
 
@@ -10,47 +17,71 @@ _start:
     movw %ax, %ss
     movw $0x9c00, %sp
 
-    movw $0xb800, %ax
-    movw %ax, %es
+    # Check if it's already enabled on boot.
+    call check_a20
+    cmpw $1, %ax
+    jne 1f
+    movw $booteda20, %si
+    call BIOSprint
+    jmp hang
 
-    movw $GeneralMessage, %si
+1:
+    movw $a20attempts, %cx
+
+activatea20Loop:
+    movw %cx, %si
+    movw (%si), %si
+    call BIOSprint
+    addw $2, %cx
+    movw %cx, %si
+    movw (%si), %ax
+    call *%ax
+    addw $2, %cx
+
+    call check_a20
+    cmpw $1, %ax
+    je a20done
+
+    movw $notenabledmsg, %si
+    call BIOSprint
+    cmpw $a20attemptsend, %cx
+    ja activatea20failed
+    jmp activatea20Loop
+
+a20done:
+    movw $enabledmsg, %si
+    call BIOSprint
+    jmp hang
+activatea20failed:
+    movw $a20disabled, %si
     call BIOSprint
 
-getkey:
-    xorw %ax, %ax
-    int $0x16
-    # TODO Compare to <Esc>, jmp to getkey if not <Esc>
-    # If ypos has reached its maximum, then reset it to 0
-    # The BIOS scancode for ESC is 0x01, the ASCII code for ESC is 0x1b
-    # For BIOS scancodes, see  vimcmd: e +650 saved_docs/BIOSinterrupts/INTERRUP.A
-    # To view return value of int 0x16, see vimcmd: e +277 saved_docs/BIOSinterrupts/INTERRUP.D
-    cmpw $0x011b, %ax
-    jne .Lcontinueloop
-    call clearHex
-    jmp getkey
-.Lcontinueloop:
-    mov %ax, (reg16)
-    call printreg16
-    jmp getkey
+hang:
+    jmp .
 
 .include "printing.asm"
-# .include "checkstate.asm"
+.include "checkstate.asm"
 
-.text 1
+datastart
 # Data section -- using text subsection so that I can use the . = _start idiom.
 # If I had them in different sections I wouldn't be able to use that, as the
 # assembler doesn't know which sections will be linked where.
-xpos: .byte 0
-# Start of first line.
-ypos: .byte 1
-hexstr: .ascii "0123456789ABCDEF"
-outstr32: .asciz "00000000"    # register value
-reg32: .long 0                   # pass values to printreg32
-outstr16:   .asciz "0000"  #register value string
-reg16:   .word    0  # pass values to printreg16
+a20attempts:
+    .word biosa20, biosa20enable
+    .word keyboarda20, keyboarda20enable
+    .word fasta20, fasta20enable
+a20attemptsend:
 
-GeneralMessage: .ascii "This is Matthews bootloader,"
-                .asciz " press keys to see their hex"
+
+booteda20:   .asciz "A20 enabled on boot"
+biosa20:     .asciz "Attempting to turn on a20 via BIOS"
+keyboarda20: .asciz "Attempting to turn on a20 via keyboard"
+fasta20:     .asciz "Attempting to turn on a20 via fast method"
+
+enabledmsg:    .asciz "...  worked!\r\nA20 is enabled!"
+notenabledmsg: .asciz "...  didn't work ..\r\n"
+
+a20disabled: .asciz "A20 is disabled!!"
 
     . = _start + 510
     .byte 0x55, 0xAA
