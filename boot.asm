@@ -23,32 +23,22 @@ _codestart:
     movw $0xb800, %ax
     movw %ax, %es
 
-    cli
-    pushw %ds
+getkey:
+    xorw %ax, %ax
+    int $0x16
+    mov %ax, (reg16)
+    call printreg16
+    # TODO Compare to <Esc>, jmp to getkey if not <Esc>
+    # If ypos has reached its maximum, then reset it to 0
+    jmp getkey
 
-    # Store the position of the global descriptor table before switching to
-    # protected mode.
-    lgdt (gdtinfo)
-    # Switch to protected mode
-    movl %cr0, %eax
-    orb $1, %al
-    movl %eax, %cr0
-
-    # Use the protected mode version of segments, and load some data into a
-    # register using it.
-    movw $0x10, %bx
-    movw %bx, %ds
-    ljmp $8, $0
+reset:
+    movw $0x3, %ax
+    int $0x10
+    cld
+    jmp getkey
 
 finalrestingplace:
-    .code32
-    xorl %ecx, %ecx
-    movw (testdata), %cx
-    movl %ecx, (reg32)
-    call printreg32
-    jmp .
-    .code16
-
 
 .text 1
 # Data section -- using text subsection so that I can use the 

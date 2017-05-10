@@ -4,8 +4,6 @@ sprint:
     lodsb
     cmpb $0, %al
     jne dochar
-    addb $1, (ypos)
-    movb $0, (xpos)
     ret
 
 cprint:
@@ -26,6 +24,16 @@ cprint:
     movw %cx, %ax
     stosw
     addb $1, (xpos)
+    cmpb $80, (xpos)
+    jb .Ltest
+    # If reached end of line, start a new one.
+    addb $1, (ypos)
+    movb $0, (xpos)
+    # If gotten to last line on the screen, go back to start.
+    cmpb $25, (ypos)
+    jb .Ltest
+    movb $0, (ypos)
+.Ltest:
     ret
 
 printreg16:
@@ -44,6 +52,8 @@ hexloop:
     jnz hexloop
     movw $outstr16, %si
     call sprint
+    movb $' ', %al
+    call cprint
     ret
 
 .code32
