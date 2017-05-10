@@ -2,18 +2,8 @@
 .text 0
     .globl _start
 
-_start:  
-    jmp _codestart
-
-.include "printing.asm"
-
-testdata:
-    .byte 0x10, 0x00, 0x00
- 
-_codestart:
-    movw $0x3, %ax
-    int $0x10
-    cld
+_start:
+    call clearAll
 
     xorw %ax, %ax
     movw %ax, %ds
@@ -23,46 +13,44 @@ _codestart:
     movw $0xb800, %ax
     movw %ax, %es
 
+    movw $GeneralMessage, %si
+    call BIOSprint
+
 getkey:
     xorw %ax, %ax
     int $0x16
-    mov %ax, (reg16)
-    call printreg16
     # TODO Compare to <Esc>, jmp to getkey if not <Esc>
     # If ypos has reached its maximum, then reset it to 0
+    # The BIOS scancode for ESC is 0x01, the ASCII code for ESC is 0x1b
+    # For BIOS scancodes, see  vimcmd: e +650 saved_docs/BIOSinterrupts/INTERRUP.A
+    # To view return value of int 0x16, see vimcmd: e +277 saved_docs/BIOSinterrupts/INTERRUP.D
+    cmpw $0x011b, %ax
+    jne .Lcontinueloop
+    call clearHex
+    jmp getkey
+.Lcontinueloop:
+    mov %ax, (reg16)
+    call printreg16
     jmp getkey
 
-reset:
-    movw $0x3, %ax
-    int $0x10
-    cld
-    jmp getkey
-
-finalrestingplace:
+.include "printing.asm"
+# .include "checkstate.asm"
 
 .text 1
-# Data section -- using text subsection so that I can use the 
+# Data section -- using text subsection so that I can use the . = _start idiom.
+# If I had them in different sections I wouldn't be able to use that, as the
+# assembler doesn't know which sections will be linked where.
 xpos: .byte 0
-ypos: .byte 0
+# Start of first line.
+ypos: .byte 1
 hexstr: .ascii "0123456789ABCDEF"
 outstr32: .asciz "00000000"    # register value
 reg32: .long 0                   # pass values to printreg32
 outstr16:   .asciz "0000"  #register value string
 reg16:   .word    0  # pass values to printreg16
 
+GeneralMessage: .ascii "This is Matthews bootloader,"
+                .asciz " press keys to see their hex"
 
-gdtinfo:
-    .word gdt_end - gdt - 1   #last byte in table
-    .long gdt         #start of table
- 
-gdt:        .long 0, 0  # entry 0 is always unused
-codedesc:   .byte 0xff, 0xff 
-# Know that finalrestingplace is less than one word in size, because it fits in
-# the MBR.
-            .word finalrestingplace
-            .byte 0, 0b10011010, 0b11001111, 0
-flatdesc:    .byte 0xff, 0xff, 0, 0, 0, 0b10010010, 0b11001111, 0
-gdt_end:
- 
     . = _start + 510
     .byte 0x55, 0xAA

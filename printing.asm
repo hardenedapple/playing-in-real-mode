@@ -25,15 +25,15 @@ cprint:
     stosw
     addb $1, (xpos)
     cmpb $80, (xpos)
-    jb .Ltest
+    jb .Lcursorfine
     # If reached end of line, start a new one.
     addb $1, (ypos)
     movb $0, (xpos)
     # If gotten to last line on the screen, go back to start.
     cmpb $25, (ypos)
-    jb .Ltest
-    movb $0, (ypos)
-.Ltest:
+    jb .Lcursorfine
+    movb $1, (ypos)
+.Lcursorfine:
     ret
 
 printreg16:
@@ -56,55 +56,41 @@ hexloop:
     call cprint
     ret
 
-.code32
-dochar32:
-    call cprint32
-sprint32:
-    lodsb
-    cmpb $0, %al
-    jne dochar32
-    addb $1, (ypos)
+# Clear entire screen.
+# Also ensure direction flag is set correctly.
+clearAll:
+    movw $0x3, %ax
+    int $0x10
+    cld
+    ret
+
+clearHex:
+    movw $0, %cx
+    movw $0x0720, %ax
+    # Start at the start of the second line
+    # The first line is the plain message I don't want overwritten.
+    movw $160, %di
+.Lloopstart:
+    # Compare to 80 * 25 * 2 (i.e. end of screen)
+    cmpw $4000, %di
+    ja .Lret
+    stosw 
+    jmp .Lloopstart
+.Lret:
+    movb $1, (ypos)
     movb $0, (xpos)
     ret
 
-cprint32:
-    movb $0x0f, %ah
-    movl %eax, %ecx
-    movzbl (ypos), %eax
-    movl $160, %edx
-    mull %edx
-    movzbl (xpos), %ebx
-    shll $1, %ebx
 
-    movl $0xb8000, %edi
-    addl %eax, %edi
-    addl %ebx, %edi
-
-    movl %ecx, %eax
-    # Interesting note: when I specify the DS segment in NASM, it uses the DS
-    # segment override prefix, when I specify it here for GNU as, it notices
-    # that the data segment is the default and omits it.
-    movw %ax, %ds:(%edi)
-    addb $1, (xpos)
+# Argument passed via %si
+# Assumes direction flag is cleared.
+BIOSprint:
+    lodsb
+    cmpb $0, %al
+    je BIOSexit
+    movb $0x0e, %ah
+    int $0x10
+    jmp BIOSprint
+BIOSexit:
     ret
-
-printreg32:
-    movl $outstr32, %edi
-    movl (reg32), %eax
-    movl $hexstr, %esi
-    movl $8, %ecx
-
-hexloop32:
-    roll $4, %eax
-    movl %eax, %ebx
-    andl $0x0f, %ebx
-    movb (%esi, %ebx), %bl
-    movb %bl, (%edi)
-    incl %edi
-    decl %ecx
-    jnz hexloop32
-
-    movl $outstr32, %esi
-    call sprint32
-    ret
-.code16
+    
