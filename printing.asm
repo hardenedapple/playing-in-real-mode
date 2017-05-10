@@ -50,8 +50,7 @@ hexloop:
 dochar32:
     call cprint32
 sprint32:
-    movl (%esi), %eax
-    leal 1(%esi), %esi
+    lodsb
     cmpb $0, %al
     jne dochar32
     addb $1, (ypos)

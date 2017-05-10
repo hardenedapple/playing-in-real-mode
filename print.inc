@@ -91,8 +91,7 @@ bits 32
 dochar32:
     call cprint32              ; print one character
 sprint32:
-    mov eax, [esi]          ; string char to AL
-    lea esi, [esi+1]
+    lodsb
     cmp al, 0
     jne dochar32               ; else, we're done
     add byte [ypos], 1       ; down one row
@@ -141,3 +140,4 @@ hexloop32:
    ret
 
 bits 16
+; vim: ft=asm
