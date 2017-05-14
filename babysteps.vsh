@@ -1,19 +1,74 @@
+vshcmd: > gcc -E boot.S > boot.asm
 vshcmd: > as boot.asm -o boot.o
 vshcmd: > ld --oformat=binary -Ttext 0x7c00 boot.o -o boot
-vshcmd: > nasm nasmboot.asm -f bin -o nasmboot.bin
-vshcmd: > diff <(xxd nasmboot.bin) <(xxd boot)
-bootloader [16:20:29] $ bootloader [16:20:29] $ bootloader [16:20:29] $ bootloader [16:20:29] $ 
-vshcmd: > qemu-system-x86_64 -enable-kvm -drive file=nasmboot.bin,format=raw
-bootloader [16:16:04] $ bootloader [16:16:06] $ 
-vshcmd: > qemu-system-x86_64 -enable-kvm -drive file=boot,format=raw
-bootloader [16:20:41] $ 
-vshcmd: > asbytes intel 'bits 16\r\n jmp 8:0h'
-00000000: ea 00 00 08 00                                   .....
-bootloader [16:21:11] $ 
-vshcmd: > asbytes att '.code16; ljmp  $8, $0'
-00000000: ea 00 00 08 00                                   .....
-bootloader [16:15:02] $ 
-vshcmd: > bochs 'floppya: 1_44=nasmboot.bin, status=inserted'
+bootloader [11:39:41] $ bootloader [11:39:41] $ bootloader [11:39:41] $ 
+
+vshcmd: > 
+vshcmd: > # Create a hard-drive image using the bximage tool.
+vshcmd: > bximage
+vshcmd: > 1
+vshcmd: > hd
+vshcmd: > flat
+vshcmd: > 10
+vshcmd: > bxcreated.img
+========================================================================
+                                bximage
+  Disk Image Creation / Conversion / Resize and Commit Tool for Bochs
+         $Id: bximage.cc 13069 2017-02-12 16:51:52Z vruppert $
+========================================================================
+
+1. Create new floppy or hard disk image
+2. Convert hard disk image to other format (mode)
+3. Resize hard disk image
+4. Commit 'undoable' redolog to base image
+5. Disk image info
+
+0. Quit
+
+Please choose one [0] 
+Create image
+
+Do you want to create a floppy disk image or a hard disk image?
+Please type hd or fd. [hd] 
+What kind of image should I create?
+Please type flat, sparse, growing, vpc or vmware4. [flat] 
+Enter the hard disk size in megabytes, between 10 and 8257535
+[10] 
+What should be the name of the image?
+[c.img] 
+Creating hard disk image 'bxcreated.img' with CHS=20/16/63
+
+The following line should appear in your bochsrc:
+  ata0-master: type=disk, path="bxcreated.img", mode=flat
+bootloader [19:43:17] $ 
+vshcmd: > as readbios.s -o readbios.o
+vshcmd: > ld --oformat=binary -Ttext 0x7c00 readbios.o -o readbios
+vshcmd: > qemu-system-x86_64 -drive file=readbios,format=raw
+bootloader [19:53:59] $ bootloader [19:53:59] $ bootloader [19:54:01] $ 
+vshcmd: > # bochs can't handle a hard-drive smaller than 10M, so put our MBR
+vshcmd: > # onto a 10M hard-drive, and boot that.
+vshcmd: > dd if=readbios of=bxcreated.img bs=512 count=3 conv=notrunc
+3+0 records in
+3+0 records out
+1536 bytes (1.5 kB, 1.5 KiB) copied, 0.000195416 s, 7.9 MB/s
+bootloader [19:54:02] $ 
+vshcmd: > fdisk -l bxcreated.img
+[1mDisk bxcreated.img: 9.9 MiB, 10321920 bytes, 20160 sectors
+[0mUnits: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x00000000
+bootloader [19:54:03] $ 
+vshcmd: > # Write the below into bochsrc.txt vimcmd: +1;/vshcmd/-1 w !cat > bochsrc.txt
+megs: 32
+#romimage: file=/usr/share/bochs/BIOS-bochs-latest, address=0xf0000
+#vgaromimage: /usr/share/bochs/VGABIOS-elpin-2.40
+boot: disk
+ata0-master: type=disk, path=bxcreated.img, mode=flat, cylinders=20, heads=16, spt=63
+log: bochsout.txt
+mouse: enabled=0
+vshcmd: > bochs
 ========================================================================
                        Bochs x86 Emulator 2.6.9
                Built from SVN snapshot on April 9, 2017
@@ -21,7 +76,6 @@ vshcmd: > bochs 'floppya: 1_44=nasmboot.bin, status=inserted'
 ========================================================================
 00000000000i[      ] BXSHARE not set. using compile time default '/usr/share/bochs'
 00000000000i[      ] reading configuration from bochsrc.txt
-00000000000i[      ] parsing arg 1, floppya: 1_44=nasmboot.bin, status=inserted
 ------------------------------
 Bochs Configuration: Main Menu
 ------------------------------
@@ -46,213 +100,160 @@ Please choose one: [6]
 vshcmd: > 6
 00000000000i[      ] installing x module as the Bochs GUI
 00000000000i[      ] using log file bochsout.txt
-Next at t=0
-(0) [0x0000fffffff0] f000:fff0 (unk. ctxt): jmpf 0xf000:e05b          ; ea5be000f0
-<bochs:1> 
-vshcmd: > break 0x7c00
-<bochs:2> 
+========================================================================
+Bochs is exiting with the following message:
+[HD    ] ata0-0: specified geometry doesn't fit on disk image
+========================================================================
+(0).[0] [0x000000000000] 0000:0000 (unk. ctxt): add byte ptr ds:[bx+si], al ; 0000
+bootloader [19:55:22] $ 
+vshcmd: > cont
+========================================================================
+Bochs is exiting with the following message:
+[XGUI  ] POWER button turned off.
+========================================================================
+(0).[119416000] [0x000000007cde] 0000:7cde (unk. ctxt): jmp .-2 (0x00007cde)      ; ebfe
+bootloader [19:54:12] $ 
+vshcmd: > rm bxcreated.img.lock
+bootloader [19:50:51] $ 
 vshcmd: > cont
 (0) Breakpoint 1, 0x0000000000007c00 in ?? ()
-Next at t=14040244
-(0) [0x000000007c00] 0000:7c00 (unk. ctxt): jmp .+230 (0x00007ce9)    ; e9e600
+Next at t=17404825
+(0) [0x000000007c00] 0000:7c00 (unk. ctxt): jmp .+202 (0x00007ccd)    ; e9ca00
 <bochs:3> 
-vshcmd: > step
-Next at t=14040246
-(0) [0x000000007cec] 0000:7cec (unk. ctxt): int 0x10                  ; cd10
-<bochs:5> 
-vshcmd: > disasm 0x7cec 0x7cef
-00007cec: (                    ): int 0x10                  ; cd10
-00007cee: (                    ): cld                       ; fc
-<bochs:8> 
-vshcmd: > break 0x7cee
-<bochs:9> 
-vshcmd: > cont
-(0) Breakpoint 2, 0x0000000000007cee in ?? ()
-Next at t=14098351
-(0) [0x000000007cee] 0000:7cee (unk. ctxt): cld                       ; fc
-<bochs:10> 
 vshcmd: > next
-Next at t=14098364
-(0) [0x000000007d0c] 0000:0000000000007d0c (unk. ctxt): mov bx, 0x0008            ; bb0800
-<bochs:26> 
-vshcmd: > exit
-(0).[14098364] [0x000000007d0c] 0000:0000000000007d0c (unk. ctxt): mov bx, 0x0008            ; bb0800
-bootloader [13:41:57] $ 
-vshcmd: > regs
-CPU0:
-rax: 00000000_60000011 rcx: 00000000_00090000
-rdx: 00000000_00000000 rbx: 00000000_00000000
-rsp: 00000000_00009bfe rbp: 00000000_00000000
-rsi: 00000000_000e0000 rdi: 00000000_0000ffac
-r8 : 00000000_00000000 r9 : 00000000_00000000
-r10: 00000000_00000000 r11: 00000000_00000000
-r12: 00000000_00000000 r13: 00000000_00000000
-r14: 00000000_00000000 r15: 00000000_00000000
-rip: 00000000_00007d0c
-eflags 0x00000006: id vip vif ac vm rf nt IOPL=0 of df if tf sf zf af PF cf
-<bochs:29> 
-vshcmd: > creg
-CR0=0x60000011: pg CD NW ac wp ne ET ts em mp PE
-CR2=page fault laddr=0x0000000000000000
-CR3=0x000000000000
-    PCD=page-level cache disable=0
-    PWT=page-level write-through=0
-CR4=0x00000000: pke smap smep osxsave pcid fsgsbase smx vmx osxmmexcpt umip osfxsr pce pge mce pae pse de tsd pvi vme
-CR8: 0x0
-EFER=0x00000000: ffxsr nxe lma lme sce
-<bochs:27> 
-vshcmd: > disasm 0x000000007ce9 0x000000007d50
-00007ce9: (                    ): mov ax, 0x0003            ; b80300
-00007cec: (                    ): int 0x10                  ; cd10
-00007cee: (                    ): cld                       ; fc
-00007cef: (                    ): xor ax, ax                ; 31c0
-00007cf1: (                    ): mov ds, ax                ; 8ed8
-00007cf3: (                    ): mov ss, ax                ; 8ed0
-00007cf5: (                    ): mov sp, 0x9c00            ; bc009c
-00007cf8: (                    ): mov ax, 0xb800            ; b800b8
-00007cfb: (                    ): mov es, ax                ; 8ec0
-00007cfd: (                    ): cli                       ; fa
-00007cfe: (                    ): push ds                   ; 1e
-00007cff: (                    ): lgdt ds:0x7d5d            ; 0f01165d7d
-00007d04: (                    ): mov eax, cr0              ; 0f20c0
-00007d07: (                    ): or al, 0x01               ; 0c01
-00007d09: (                    ): mov cr0, eax              ; 0f22c0
-00007d0c: (                    ): mov bx, 0x0008            ; bb0800
-00007d0f: (                    ): mov ds, bx                ; 8edb
-00007d11: (                    ): xor ecx, ecx              ; 6631c9
-00007d14: (                    ): mov cx, word ptr ds:0x7ce6 ; 8b0ee67c
-00007d18: (                    ): mov dword ptr ds:0x7d52, ecx ; 66890e527d
-00007d1d: (                    ): call .-114                ; e88eff
-00007d20: (                    ): xor ecx, ecx              ; 6631c9
-00007d23: (                    ): mov cx, word ptr ds:0x7ce6 ; 8b0ee67c
-00007d27: (                    ): and al, 0xfe              ; 24fe
-00007d29: (                    ): mov cr0, eax              ; 0f22c0
-00007d2c: (                    ): pop ds                    ; 1f
-00007d2d: (                    ): sti                       ; fb
-00007d2e: (                    ): mov word ptr ds:0x7d5b, cx ; 890e5b7d
-00007d32: (                    ): call .-250                ; e806ff
-00007d35: (                    ): jmp .-2                   ; ebfe
-00007d37: (                    ): add byte ptr ds:[bx+si], al ; 0000
-00007d39: (                    ): xor byte ptr ds:[bx+di], dh ; 3031
-00007d3b: (                    ): xor dh, byte ptr ss:[bp+di] ; 3233
-00007d3d: (                    ): xor al, 0x35              ; 3435
-00007d3f: (                    ): aaa                       ; 3637
-00007d41: (                    ): cmp byte ptr ds:[bx+di], bh ; 3839
-00007d43: (                    ): inc cx                    ; 41
-00007d44: (                    ): inc dx                    ; 42
-00007d45: (                    ): inc bx                    ; 43
-00007d46: (                    ): inc sp                    ; 44
-00007d47: (                    ): inc bp                    ; 45
-00007d48: (                    ): inc si                    ; 46
-00007d49: (                    ): xor byte ptr ds:[bx+si], dh ; 3030
-00007d4b: (                    ): xor byte ptr ds:[bx+si], dh ; 3030
-00007d4d: (                    ): xor byte ptr ds:[bx+si], dh ; 3030
-00007d4f: (                    ): xor byte ptr ds:[bx+si], dh ; 3030
-<bochs:11> 
-vshcmd: > disasm 0x7c00 0x7d00
-00007c00: (                    ): jmp .+230                 ; e9e600
-00007c03: (                    ): call .+16                 ; e81000
-00007c06: (                    ): lodsb al, byte ptr ds:[si] ; ac
-00007c07: (                    ): cmp al, 0x00              ; 3c00
-00007c09: (                    ): jnz .-8                   ; 75f8
-00007c0b: (                    ): add byte ptr ds:0x7d38, 0x01 ; 8006387d01
-00007c10: (                    ): mov byte ptr ds:0x7d37, 0x00 ; c606377d00
-00007c15: (                    ): ret                       ; c3
-00007c16: (                    ): mov ah, 0x0f              ; b40f
-00007c18: (                    ): mov cx, ax                ; 89c1
-00007c1a: (                    ): movzx ax, byte ptr ds:0x7d38 ; 0fb606387d
-00007c1f: (                    ): mov dx, 0x00a0            ; baa000
-00007c22: (                    ): mul ax, dx                ; f7e2
-00007c24: (                    ): movzx bx, byte ptr ds:0x7d37 ; 0fb61e377d
-00007c29: (                    ): shl bx, 1                 ; d1e3
-00007c2b: (                    ): mov di, 0x0000            ; bf0000
-00007c2e: (                    ): add di, ax                ; 01c7
-00007c30: (                    ): add di, bx                ; 01df
-00007c32: (                    ): mov ax, cx                ; 89c8
-00007c34: (                    ): stosw word ptr es:[di], ax ; ab
-00007c35: (                    ): add byte ptr ds:0x7d37, 0x01 ; 8006377d01
-00007c3a: (                    ): ret                       ; c3
-00007c3b: (                    ): mov di, 0x7d56            ; bf567d
-00007c3e: (                    ): mov ax, word ptr ds:0x7d5b ; a15b7d
-00007c41: (                    ): mov si, 0x7d39            ; be397d
-00007c44: (                    ): mov cx, 0x0004            ; b90400
-00007c47: (                    ): rol ax, 0x04              ; c1c004
-00007c4a: (                    ): mov bx, ax                ; 89c3
-00007c4c: (                    ): and bx, 0x000f            ; 83e30f
-00007c4f: (                    ): mov bl, byte ptr ds:[bx+si] ; 8a18
-00007c51: (                    ): mov byte ptr ds:[di], bl  ; 881d
-00007c53: (                    ): inc di                    ; 47
-00007c54: (                    ): dec cx                    ; 49
-00007c55: (                    ): jnz .-16                  ; 75f0
-00007c57: (                    ): mov si, 0x7d56            ; be567d
-00007c5a: (                    ): call .-87                 ; e8a9ff
-00007c5d: (                    ): ret                       ; c3
-00007c5e: (                    ): call .+24                 ; e81800
-00007c61: (                    ): mov eax, dword ptr ds:[esi] ; 66678b06
-00007c65: (                    ): lea esi, dword ptr ds:[esi+1] ; 66678d7601
-00007c6a: (                    ): cmp al, 0x00              ; 3c00
-00007c6c: (                    ): jnz .-16                  ; 75f0
-00007c6e: (                    ): add byte ptr ds:0x7d38, 0x01 ; 8006387d01
-00007c73: (                    ): mov byte ptr ds:0x7d37, 0x00 ; c606377d00
-00007c78: (                    ): ret                       ; c3
-00007c79: (                    ): mov ah, 0x0f              ; b40f
-00007c7b: (                    ): mov ecx, eax              ; 6689c1
-00007c7e: (                    ): movzx eax, byte ptr ds:0x7d38 ; 660fb606387d
-00007c84: (                    ): mov edx, 0x000000a0       ; 66baa0000000
-00007c8a: (                    ): mul eax, edx              ; 66f7e2
-00007c8d: (                    ): movzx ebx, byte ptr ds:0x7d37 ; 660fb61e377d
-00007c93: (                    ): shl ebx, 1                ; 66d1e3
-00007c96: (                    ): mov edi, 0x000b8000       ; 66bf00800b00
-00007c9c: (                    ): add edi, eax              ; 6601c7
-00007c9f: (                    ): add edi, ebx              ; 6601df
-00007ca2: (                    ): mov eax, ecx              ; 6689c8
-00007ca5: (                    ): mov word ptr ds:[edi], ax ; 678907
-00007ca8: (                    ): add byte ptr ds:0x7d37, 0x01 ; 8006377d01
-00007cad: (                    ): ret                       ; c3
-00007cae: (                    ): mov edi, 0x00007d49       ; 66bf497d0000
-00007cb4: (                    ): mov eax, dword ptr ds:0x7d52 ; 66a1527d
-00007cb8: (                    ): mov esi, 0x00007d39       ; 66be397d0000
-00007cbe: (                    ): mov ecx, 0x00000008       ; 66b908000000
-00007cc4: (                    ): rol eax, 0x04             ; 66c1c004
-00007cc8: (                    ): mov ebx, eax              ; 6689c3
-00007ccb: (                    ): and ebx, 0x0000000f       ; 6683e30f
-00007ccf: (                    ): mov bl, byte ptr ds:[esi+ebx] ; 678a1c1e
-00007cd3: (                    ): mov byte ptr ds:[edi], bl ; 67881f
-00007cd6: (                    ): inc edi                   ; 6647
-00007cd8: (                    ): dec ecx                   ; 6649
-00007cda: (                    ): jnz .-24                  ; 75e8
-00007cdc: (                    ): mov esi, 0x00007d49       ; 66be497d0000
-00007ce2: (                    ): call .-132                ; e87cff
-00007ce5: (                    ): ret                       ; c3
-00007ce6: (                    ): adc byte ptr ds:[bx+si], al ; 1000
-00007ce8: (                    ): add byte ptr ds:[bx+si+3], bh ; 00b80300
-00007cec: (                    ): int 0x10                  ; cd10
-00007cee: (                    ): cld                       ; fc
-00007cef: (                    ): xor ax, ax                ; 31c0
-00007cf1: (                    ): mov ds, ax                ; 8ed8
-00007cf3: (                    ): mov ss, ax                ; 8ed0
-00007cf5: (                    ): mov sp, 0x9c00            ; bc009c
-00007cf8: (                    ): mov ax, 0xb800            ; b800b8
-00007cfb: (                    ): mov es, ax                ; 8ec0
-00007cfd: (                    ): cli                       ; fa
-00007cfe: (                    ): push ds                   ; 1e
-00007cff: (                    ): lgdt ds:0x7d5d            ; 0f01165d7d
-<bochs:12> 
-vshcmd: > exit
-(0).[14040242] [0x000000007ce9] 0000:7ce9 (unk. ctxt): mov ax, 0x0003            ; b80300
-bootloader [13:11:45] $ 
-vshcmd: > # Where the call in the main program goes to 0x7d47 - 149 = 0x7cb2
-vshcmd: > break 0x00007d15
-<bochs:18> 
-vshcmd: > cont
-(0) Breakpoint 2, 0x0000000000007d15 in ?? ()
-Next at t=14098351
-(0) [0x000000007d15] 0000:7d15 (unk. ctxt): cld                       ; fc
-<bochs:19> 
+Next at t=17404836
+(0) [0x000000007c4c] 0000:7c4c (unk. ctxt): cmp al, 0x00              ; 3c00
+<bochs:14> 
 vshcmd: > step
-Next at t=14098366
-(0) [0x000000007d38] 0000:0000000000007d38 (unk. ctxt): mov cx, word ptr ds:0x7c03 ; 8b0e037c
-<bochs:34> 
-vshcmd: > quit
-(0).[14098371] [0x000000007cb8] 0000:0000000000007cb8 (unk. ctxt): mov eax, dword ptr ds:0x7d05 ; 66a1057d
-bootloader [18:44:00] $ 
+Next at t=17404833
+(0) [0x000000007c48] 0000:7c48 (unk. ctxt): mov ah, 0x0e              ; b40e
+<bochs:11> 
+vshcmd: >
+vshcmd: >
+vshcmd: > mv readbios workingbios
+bootloader [16:07:14] $ 
+vshcmd: > as readbios.s -o readbios.o
+vshcmd: > ld --oformat=binary -Ttext 0x7c00 readbios.o -o readbios
+vshcmd: > echo && fdisk -l readbios
+bootloader [18:09:16] $ bootloader [18:09:16] $ 
+[1mDisk readbios: 4 KiB, 4096 bytes, 8 sectors
+[0mUnits: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0xfeeeebbe
+
+[1mDevice[0m     [1mBoot[0m [1mStart[0m [1mEnd[0m [1mSectors[0m [1m Size[0m [1mId[0m [1mType[0m
+readbios1  *        1   7       7  3.5K ee GPT
+bootloader [18:09:16] $ 
+vshcmd: > fdisk -l os.iso
+[1mDisk os.iso: 19.4 MiB, 20338688 bytes, 39724 sectors
+[0mUnits: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: gpt
+Disk identifier: AE06F349-3633-4BFF-8E6A-3C1EF23C9997
+
+[1mDevice[0m     [1mStart[0m [1m  End[0m [1mSectors[0m [1m Size[0m [1mType[0m
+os.iso1       64   355     292  146K Microsoft basic data
+os.iso2      356  6115    5760  2.8M EFI System
+os.iso3     6116 39075   32960 16.1M Apple HFS/HFS+
+os.iso4    39076 39675     600  300K Microsoft basic data
+bootloader [18:32:17] $ 
+vshcmd: > dd if=os.iso of=temp.img bs=512 count=20
+20+0 records in
+20+0 records out
+10240 bytes (10 kB, 10 KiB) copied, 0.000407524 s, 25.1 MB/s
+bootloader [18:32:19] $ 
+vshcmd: > fdisk -l temp.img
+[31mGPT PMBR size mismatch (39723 != 19) will be corrected by w(rite).[0m
+[1mDisk temp.img: 10 KiB, 10240 bytes, 20 sectors
+[0mUnits: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x00000000
+
+[1mDevice[0m     [1mBoot[0m [1mStart[0m [1m  End[0m [1mSectors[0m [1m Size[0m [1mId[0m [1mType[0m
+temp.img1           1 39723   39723 19.4M ee GPT
+bootloader [18:32:21] $ 
+vshcmd: > fdisk readbios
+[32m
+Welcome to fdisk (util-linux 2.29.2).
+[0mChanges will remain in memory only, until you decide to write them.
+Be careful before using the write command.
+
+
+Command (m for help): 
+vshcmd: > m
+
+Help:
+[1m
+  DOS (MBR)
+[0m   a   toggle a bootable flag
+   b   edit nested BSD disklabel
+   c   toggle the dos compatibility flag
+[1m
+  Generic
+[0m   d   delete a partition
+   F   list free unpartitioned space
+   l   list known partition types
+   n   add a new partition
+   p   print the partition table
+   t   change a partition type
+   v   verify the partition table
+   i   print information about a partition
+[1m
+  Misc
+[0m   m   print this menu
+   u   change display/entry units
+   x   extra functionality (experts only)
+[1m
+  Script
+[0m   I   load disk layout from sfdisk script file
+   O   dump disk layout to sfdisk script file
+[1m
+  Save & Exit
+[0m   w   write table to disk and exit
+   q   quit without saving changes
+[1m
+  Create a new label
+[0m   g   create a new empty GPT partition table
+   G   create a new empty SGI (IRIX) partition table
+   o   create a new empty DOS partition table
+   s   create a new empty Sun partition table
+
+
+Command (m for help): 
+vshcmd: > l
+
+ 0  Empty           24  NEC DOS         81  Minix / old Lin bf  Solaris        
+ 1  FAT12           27  Hidden NTFS Win 82  Linux swap / So c1  DRDOS/sec (FAT-
+ 2  XENIX root      39  Plan 9          83  Linux           c4  DRDOS/sec (FAT-
+ 3  XENIX usr       3c  PartitionMagic  84  OS/2 hidden or  c6  DRDOS/sec (FAT-
+ 4  FAT16 <32M      40  Venix 80286     85  Linux extended  c7  Syrinx         
+ 5  Extended        41  PPC PReP Boot   86  NTFS volume set da  Non-FS data    
+ 6  FAT16           42  SFS             87  NTFS volume set db  CP/M / CTOS / .
+ 7  HPFS/NTFS/exFAT 4d  QNX4.x          88  Linux plaintext de  Dell Utility   
+ 8  AIX             4e  QNX4.x 2nd part 8e  Linux LVM       df  BootIt         
+ 9  AIX bootable    4f  QNX4.x 3rd part 93  Amoeba          e1  DOS access     
+ a  OS/2 Boot Manag 50  OnTrack DM      94  Amoeba BBT      e3  DOS R/O        
+ b  W95 FAT32       51  OnTrack DM6 Aux 9f  BSD/OS          e4  SpeedStor      
+ c  W95 FAT32 (LBA) 52  CP/M            a0  IBM Thinkpad hi ea  Rufus alignment
+ e  W95 FAT16 (LBA) 53  OnTrack DM6 Aux a5  FreeBSD         eb  BeOS fs        
+ f  W95 Ext'd (LBA) 54  OnTrackDM6      a6  OpenBSD         ee  GPT            
+10  OPUS            55  EZ-Drive        a7  NeXTSTEP        ef  EFI (FAT-12/16/
+11  Hidden FAT12    56  Golden Bow      a8  Darwin UFS      f0  Linux/PA-RISC b
+12  Compaq diagnost 5c  Priam Edisk     a9  NetBSD          f1  SpeedStor      
+14  Hidden FAT16 <3 61  SpeedStor       ab  Darwin boot     f4  SpeedStor      
+16  Hidden FAT16    63  GNU HURD or Sys af  HFS / HFS+      f2  DOS secondary  
+17  Hidden HPFS/NTF 64  Novell Netware  b7  BSDI fs         fb  VMware VMFS    
+18  AST SmartSleep  65  Novell Netware  b8  BSDI swap       fc  VMware VMKCORE 
+1b  Hidden W95 FAT3 70  DiskSecure Mult bb  Boot Wizard hid fd  Linux raid auto
+1c  Hidden W95 FAT3 75  PC/IX           bc  Acronis FAT32 L fe  LANstep        
+1e  Hidden W95 FAT1 80  Old Minix       be  Solaris boot    ff  BBT            
+
+Command (m for help): 
+vshcmd: > q
+
+bootloader [17:27:51] $ 
