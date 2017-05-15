@@ -19,11 +19,24 @@
     movw \str, %si
     call printString
 .endm
+# Longer than just jmp <failure position>, but provides two benefits.
+# a) the obvious one, allows printing any string.
+# b) The more interesting one, leaves the instruction pointer where the failure
+#     happened. This makes debugging much easier when running in bochs(1).
 .macro FAILED str
     movw $\str, %si
     call printString
     jmp .
 .endm
+
+.macro ERRMSG str
+    movw $\str, %si
+    call printString
+    movw $., %ax
+    movw %ax, reg16
+    call printReg
+.endm
+
 _start:
     # If an interrupt were called while we set up segment registers, then I'm
     # not sure what would happen. Only allow interrupts when the stack segment
@@ -71,7 +84,7 @@ printString:
     ret
 
 cantRead:
-    mPrintString $msgcantRead
+    mPrintString $msgNoLBA
     jmp .
 
 # Use the interrupt mentioned in the BIOS list
@@ -91,25 +104,25 @@ checkLBASupported:
     ret
 
 readFromHardDrive:
-    # disk address packet must be passed to the interrupt via %ds:%si
+    # Disk packet must be set up by the caller.
     movw $diskPacket, %si
     movb $0x42, %ah # Read hard-disk function
     movb curdrive, %dl # drive number
     int $0x13
     jae 1f
-    FAILED msgcantRead
+    ERRMSG msgReadFailed
 1:
     # Interrupt description.
     # vimcmd: e +3590 saved_docs/BIOSinterrupts/INTERRUP.B
     # Operation status table (error code if there was an error) stored in AH.
     # it's zero if successful: vimcmd: e +1602 saved_docs/BIOSinterrupts/INTERRUP.B
-    testb %al, %al
+    testb %ah, %ah
     jz 1f
-    FAILED msgcantRead
+    ERRMSG msgReadFailed
 1:
     cmpw $0x1, numBlocks
     jz 1f
-    FAILED msgcantRead
+    ERRMSG msgReadFailed
 1:
     ret
 
@@ -119,10 +132,36 @@ DisplayData:
     call printString
     ret
 
+printReg:
+    movw $outstr16, %di
+    movw reg16, %ax
+    movw $hexstr, %si
+    movw $4, %cx
+hexloop:
+    rolw $4, %ax
+    movw %ax, %bx
+    andw $0x0f, %bx
+    # Cheating a little here, the index is in the base register while the
+    # string position is in the source register.
+    movb (%bx, %si), %bl
+    movb %bl, (%di)
+    incw %di
+    loop hexloop
+
+    movw $outstr16, %si
+    call printString
+    ret
+
+
+
 .text 1
 curdrive: .byte 0
-msgInHardDrive: .asciz "in hard drive read function"
-msgcantRead: .asciz "failed to read"
+msgInHardDrive: .asciz "in hard drive read function "
+msgNoLBA: .ascii "no installed LBA "
+msgReadFailed: .asciz "cannot read "
+hexstr:     .ascii "0123456789ABCDEF"
+outstr16:   .byte 0, 0, 0, 0, 0xa, 0xd, 0
+reg16:      .word 0
 diskPacket:
     # Tell the BIOS that we're not using the `extendedtransferBuffer` element
     # in this disk address packet.
