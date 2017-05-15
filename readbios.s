@@ -15,31 +15,67 @@
 # .section mytext, "2"
 .text
     .globl _start
+.macro mPrintString str
+    movw \str, %si
+    call printString
+.endm
+.macro FAILED str
+    movw $\str, %si
+    call printString
+    jmp .
+.endm
 _start:
-    jmp _boot
-    msgFail: .asciz "something has gone wrong ..."
-    msgcantRead: .asciz "failed to read"
-    msgCanRead: .asciz "Extensions are installed"
-    .macro mPrintString str
-        movw \str, %si
-        call printString
-    .endm
-    printString:
-        movb $0x0e, %ah
-        cld
-    .LprintStringIn:
-        lodsb
-        cmp $0x0, %al
-        je  .LprintStringOut
-        int $0x10
-        jmp .LprintStringIn
-    .LprintStringOut:
+    # If an interrupt were called while we set up segment registers, then I'm
+    # not sure what would happen. Only allow interrupts when the stack segment
+    # & pointer is internally consistent with the code segment.
+    cli
+    # Just in case of a buggy BIOS -- ensure that %cs is set to 0.
+    ljmp $0, $_boot
+_boot:
+    xorw %ax, %ax
+    movw %ax, %ds
+    movw %ax, %ss
+
+    # 0x9fc00 - 0x100000 is reserved by the BIOS (as is below 0x500)
+    movw $0x9000, %ax
+    movw %ax, %es
+    # Start off with the stack pointer just under the extended segment.
+    movw $0x8ff8, %sp
+    sti
+
+    # Store the current drive in a known place in memory.
+    movb %dl, curdrive
+
+    call checkLBASupported
+
+    movb $1, startBlock
+    call readFromHardDrive
+    call DisplayData
+    movb $2, startBlock
+    call readFromHardDrive
+    call DisplayData
+successful_freeze:
+    jmp .
+
+
+printString:
+    movb $0x0e, %ah
+    cld
+1:
+    lodsb
+    cmp $0x0, %al
+    je  2f
+    int $0x10
+    jmp 1b
+2:
     ret
 
 cantRead:
     mPrintString $msgcantRead
-    jmp _freeze
+    jmp .
 
+# Use the interrupt mentioned in the BIOS list
+# vimcmd: e +3550 saved_docs/BIOSinterrupts/INTERRUP.B
 checkLBASupported:
 	movb	$0x41, %ah
 	movw	$0x55aa, %bx
@@ -49,105 +85,59 @@ checkLBASupported:
 	jc  cantRead
 	cmpw	$0xaa55, %bx
 	jne	cantRead
+    # Ensure the extended disk access functions are supported.
 	andw	$1, %cx
 	jz	cantRead
-    mPrintString $msgCanRead
-    jmp _freeze
     ret
 
-# TODO The below is some code taken from GRUB to do with loading data from the
-# hard-drive.
-	xorw	%ax, %ax
-	movw	%ax, 4(%si)
-
-	incw	%ax
-	/* set the mode to non-zero */
-	movb	$1, -1(%si)
-	# Number of blocks to transfer.
-	movw	$1, 2(%si)
-	/* the size and the reserved byte */
-	movw	$0x0010, (%si)
-
-    # Starting absolute block number
-	movl	$1, 8(%si)
-	movl	$0, 12(%si)
-
-
-    readFromHardDrive:
-        # Reads into the data buffer pointed to by %es:%bx
-        # Store a  record to say how many times I've attempted to read the
-        # data.
-        pushw $0x00
-        jmp 3f
-    1:
-        # Failure condition -- try again up to three times
-        popw %ax
-        cmp $0x3, %al
-        jbe 2f
-        mPrintString $msgFail
-        jmp _freeze
-    2:
-        pushw %ax
-    3:
-        movb $0x42, %ah # Read hard-disk function
-        movb curdrive, %dl # drive number
-        int $0x13
-        jc 1b
-        # Call failure function if carry flag is set, or if al is not 1
-        # according to the BIOS list ...
-        # carry flag is set on error
-        #   AH set to 0x11 if corrected ECC error
-        #   AL = burst length
-        # carry flag clear on error
-        #   AH status (see Table 00234) vimcmd: e +/Table\ 00234/ saved_docs/BIOSinterrupts/INTERRUP.B
-        #   AL number of sectors transferred.
-        cmpb $0x01, %al
-        jne 1b
-    .LreadFromHardDrive:
-        # Just to remove the counter on the stack
-        popw %ax
-        ret
-
-
-    DisplayData:
-    .LDisplayDataIn:
-        pushw %ds
-        movw %es, %si
-        movw %si, %ds
-        movw %bx, %si
-        call printString
-        pop %ds
-    .LDisplayDataOut:
+readFromHardDrive:
+    # disk address packet must be passed to the interrupt via %ds:%si
+    movw $diskPacket, %si
+    movb $0x42, %ah # Read hard-disk function
+    movb curdrive, %dl # drive number
+    int $0x13
+    jae 1f
+    FAILED msgcantRead
+1:
+    # Interrupt description.
+    # vimcmd: e +3590 saved_docs/BIOSinterrupts/INTERRUP.B
+    # Operation status table (error code if there was an error) stored in AH.
+    # it's zero if successful: vimcmd: e +1602 saved_docs/BIOSinterrupts/INTERRUP.B
+    testb %al, %al
+    jz 1f
+    FAILED msgcantRead
+1:
+    cmpw $0x1, numBlocks
+    jz 1f
+    FAILED msgcantRead
+1:
     ret
-_boot:
-    xorw %ax, %ax
-    movw %ax, %ds
-    movw %ax, %ss
 
-    movw $0x9000, %ax
-    movw %ax, %es
 
-    # Start off with the stack pointer just under the extended segment.
-    movw $0x8ff8, %sp
-    # Store the current drive in a known place in memory.
-    movb %dl, curdrive
+DisplayData:
+    movw $0x9000, %si
+    call printString
+    ret
 
-    call checkLBASupported
-    mPrintString msgCanRead
-    jmp .
-    xorw %bx, %bx
-    pushw $2
-    enter $0, $0
-    call readFromHardDrive
-    call DisplayData
-    # movw $3, 0x2(%bp)
-    # movw (%di), %ax
-    # call *%ax
-    # call DisplayData
-_freeze:
-    jmp _freeze
-
+.text 1
 curdrive: .byte 0
+msgInHardDrive: .asciz "in hard drive read function"
+msgcantRead: .asciz "failed to read"
+diskPacket:
+    # Tell the BIOS that we're not using the `extendedtransferBuffer` element
+    # in this disk address packet.
+    sizeofPacket: .byte 0x10
+    packetReserved: .byte 0
+    # At the moment, we only even want to transfer one block.
+    numBlocks:      .word 1
+    # Want to load the data into 0x9000
+    transferBuffer: .long 0x9000
+    # Where to read from, set by the calling code.
+    startBlock:     .quad 0
+    # The below would be needed if needed to specify a 64 bit address for the
+    # transfer buffer.
+    # extendedtransferBuffer: .quad 0
+
 
 .org 0x1b8
 diskID:
