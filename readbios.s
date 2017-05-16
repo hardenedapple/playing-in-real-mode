@@ -1,32 +1,10 @@
 .code16
-# n.b. You can name the section whatever you want ...
-# Using the below declaration, and the flag --section-start=mytext=0x7c00
-# instead of -Ttext 0x7c00 in the linker arguments, you get the same file.
-# The number "2" means that the SHF_ALLOC flag is set in the section. This
-# makes sure that the data is put into the resulting output file.
-#
-# The format of this declaration when outputting ELF files (which are outputed
-# by the assembler by default on my machine & setup) can be found in
-# "(as)Section" info page.
-# vimcmd: term info as -n Section
-# Note that both section header *flags* and *type* can be specified.
-# See the difference in the elf(5) man page.
-# vimcmd: Man elf
-# .section mytext, "2"
+
 .text
     .globl _start
 .macro mPrintString str
     movw \str, %si
     call printString
-.endm
-# Longer than just jmp <failure position>, but provides two benefits.
-# a) the obvious one, allows printing any string.
-# b) The more interesting one, leaves the instruction pointer where the failure
-#     happened. This makes debugging much easier when running in bochs(1).
-.macro FAILED str
-    movw $\str, %si
-    call printString
-    jmp .
 .endm
 
 .macro ERRMSG str
@@ -61,14 +39,46 @@ _boot:
 
     call checkLBASupported
 
-    movb $1, startBlock
+    # Use the default values stored in `diskPacket` -- read the first block of
+    # the disk into memory at 0x7e00.
     call readFromHardDrive
-    call DisplayData
-    movb $2, startBlock
+
+    # Put the value of the current drive back into %dl
+    movb curdrive, %dl
+    # Jump to this place in the next section.
+    # This file is linked twice, once with the start at 0x7c00 and once with
+    # the start at 0x7e00.
+    # We are now jumping to this place in the binary that was linked second.
+    # Use the instruction bytes directly rather than playing tricks with the
+    # linker.
+    .byte 0xe9
+    .word 0x200
+    /*
+     * NOTE
+     *  Between `otherSection` and `backtostart`, the data/text is only accessed
+     *  while in the 0x7e00 segment.
+     */
+otherSection:
+    # Read the vmlinuz-linux MBR we placed in sector 2048 of the hard-drive
+    # into memory location 0x7c00, and jump to it.
+    movw $2048, startBlock
+    movw $0x7c00, transferBuffer
+    # Store the value of the current drive into `curdrive` in the second
+    # segment.
+    movb %dl, curdrive
     call readFromHardDrive
-    call DisplayData
-successful_freeze:
+    # Check everything worked nicely.
+    movw 0x7c00, %ax
+    # Hex of the first two bytes in the vmlinuz-linux file.
+    cmpw $0x5a4d, %ax
+    jne end
+    jmp *backtostart
+end:
+    movw %ax, reg16
+    call printReg
+    ERRMSG msgReadFailed
     jmp .
+backtostart: .word 0x7c00
 
 
 printString:
@@ -105,9 +115,9 @@ checkLBASupported:
 
 readFromHardDrive:
     # Disk packet must be set up by the caller.
+    movb curdrive, %dl # drive number
     movw $diskPacket, %si
     movb $0x42, %ah # Read hard-disk function
-    movb curdrive, %dl # drive number
     int $0x13
     jae 1f
     ERRMSG msgReadFailed
@@ -169,16 +179,18 @@ diskPacket:
     packetReserved: .byte 0
     # At the moment, we only even want to transfer one block.
     numBlocks:      .word 1
-    # Want to load the data into 0x9000
-    transferBuffer: .long 0x9000
+    # When reading the second part, load the data just after ourselves in
+    # memory. Doesn't really matter where we load it, but that's a nice safe
+    # place.
+    transferBuffer: .long 0x7e00
     # Where to read from, set by the calling code.
-    startBlock:     .quad 0
+    startBlock:     .quad 1
     # The below would be needed if needed to specify a 64 bit address for the
     # transfer buffer.
     # extendedtransferBuffer: .quad 0
 
 
-.org 0x1b8
+. = _start + 0x1b8
 diskID:
     .long 0xfeeeebbe
     .word 0
@@ -189,28 +201,19 @@ partitionTable:
         # CHS address of first absolute sector in partition
             # Doesn't seem to matter.
             .byte 0x00, 0x00, 0x00
-        # Partition type
-        .byte 0x01
+        # Partition type  "BootIt"  (Just like the name).
+        .byte 0xdf
         # CHS address of last absolute sector in partition
             .byte 0x00, 0x00, 0x00
         # LBA of first absolute sector in partition
-            .byte 0x01, 0x00, 0x00, 0x00
-        # Number of sectors in partition
+        # GRUB recommends 2048 sectors to install itself, so we put the
+        # partition in the same place that GRUB would to ease with transition
+        # in the future.
+            .byte 0x00, 0x08, 0x00, 0x00
+        # Number of sectors in partition.
         .long 100
 
 _end:
-    .org 510
+    . = _start + 510
     .byte 0x55
     .byte 0xaa
-
-_sector2:
-    .asciz "Sector: 2\n\r"
-
-diskLabel:    .asciz "Test value"
-
-    . = _sector2 + 512
-_sector3:
-    .asciz "Sector: 3\n\r"
-    . = _sector3 + 512
-
-.org 512  * 8
