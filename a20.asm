@@ -123,6 +123,67 @@ fasta20enable:
     ret
 
 keyboarda20enable:
+    cli
+
+    call a20wait
+    # Disable keyboard, see 
+    # http://wiki.osdev.org/%228042%22_PS/2_Controller#Command_Register
+    movb $0xad, %al
+    outb %al, $0x64
+
+    call a20wait
+    # Read Controller output port (see link above)
+    movb $0xd0, %al
+    outb %al, $0x64
+
+    call a20wait2
+    # Get data from keyboard (return from the above command)
+    inb $0x60, %al
+    pushl %eax
+
+    call a20wait
+    # Write next byte to controller output port.
+    movb $0xd1, %al
+    outb %al, $0x64
+
+    call a20wait
+    # Send the previous settings, along with the request to enable a20
+    # http://wiki.osdev.org/%228042%22_PS/2_Controller#PS.2F2_Controller_Output_Port
+    popl %eax
+    orb $2, %al
+    outb %al, $0x60
+
+    call a20wait
+    # Enable the keyboard again.
+    movb $0xae, %al
+    outb %al, $0x64
+
+    call a20wait
+    sti
+    ret
+
+a20wait:
+    # Reading from the keyboard status register.
+    inb $0x64, %al
+    # from http://wiki.osdev.org/%228042%22_PS/2_Controller#Status_Register ,
+    # bit 1 marks whether the input buffer is full or not.
+    # We have to wait until it's clear before either sending a command to port
+    # 0x64 or sending data to port 0x60.
+    testb $2, %al
+    jnz a20wait
+    ret
+
+a20wait2:
+    inb $0x64, %al
+    # From http://wiki.osdev.org/%228042%22_PS/2_Controller#Status_Register ,
+    # bit 0 marks whether the output buffer has data or not.
+    # We wait until the output buffer has data before attempting to read from
+    # it.
+    testb $1, %al
+    jz a20wait2
+    ret
+
+
 biosa20enable:
     pushw %cx
     # vimcmd: e +3128 saved_docs/BIOSinterrupts/INTERRUP.C
@@ -168,15 +229,11 @@ datastart
 faileda20:  .asciz "... something went wrong "
 
 a20attempts:
-    # # The below is the recommended order to attempt turning on a20, the
-    # # uncommented order is just for trying things out.
-    # .word biosa20, biosa20enable
-    # .word keyboarda20, keyboarda20enable
-    # .word fasta20, fasta20enable
-    
-    .word fasta20, fasta20enable
+    # The below is the recommended order to attempt turning on a20, the
+    # uncommented order is just for trying things out.
     .word biosa20, biosa20enable
     .word keyboarda20, keyboarda20enable
+    .word fasta20, fasta20enable
 a20attemptsend:
 
 

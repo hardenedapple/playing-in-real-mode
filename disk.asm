@@ -49,6 +49,10 @@ ignoreerror:
     jmp .
 
 readFromHardDrive:
+    # Store the number of packets that we're requesting to be read.
+    # This allows us to check the number we've requested is the same number
+    # we received.
+    movw numBlocks, %cx
     # Disk packet must be set up by the caller.
     movb curdrive, %dl # drive number
     movw $diskPacket, %si
@@ -65,7 +69,7 @@ readFromHardDrive:
     jz 1f
     ERRMSG(msgReadFailed)
 1:
-    cmpw $0x1, numBlocks
+    cmpw %cx, numBlocks
     jz 1f
     ERRMSG(msgReadFailed)
 1:
