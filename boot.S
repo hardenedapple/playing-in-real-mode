@@ -8,12 +8,16 @@
 
 #define secondstage .text 2
 
+#define printString(str) movw str, %si; call BIOSprint
+#define ERRMSG(str) movw $str, %si; call errmsg
+
     # Just in case any odd BIOS has a non-standard %cs:%eip setup.
     ljmp $0, $_start
 _start:
-    call saveDiskNum
-    call initialiseDisks
-    call clearScreen
+    # If an interrupt were called while we set up segment registers, then I'm
+    # not sure what would happen. Only allow interrupts when the stack segment
+    # & pointer is internally consistent with the code segment.
+    cli
 
     # Set up those segments that we need.
     xorw %ax, %ax
@@ -39,33 +43,38 @@ _start:
     #   0xc0000 32768 bytes of Video BIOS
     #   0xc8000 163840 bytes of Memory Mapped I/O
     #   0xf0000 65536 bytes of BIOS.
+    #
+    # 0x9fc00 - 0x100000 is reserved by the BIOS (as is below 0x500)
 
-    # # TODO Stack pointer -- top of non-reserved memory.
-    # # (why not?).
-    # movw $0x8fc0, %ax
-    # movw %ax, %ss
-    # movw $0xffff, %sp
-
+    # Put the stack pointer at the top of memory.
+    # This may turn out to be a difficulty in the future, because of memory
+    # layout restrictions I don't know of.
+    movw $0x8fc0, %ax
     movw %ax, %ss
-    movw $0x9c00, %sp
+    movw $0xffff, %sp
+    sti
 
-    # Read in the second sector of my bootloader.
-    movb $0x01, %al # Number of sectors to read TODO calculate this from size.
-    movb $0x00, %ch # cylinder number
-    # sector number in bits 0-5,
-    # high two bits of cylinder in 6-7 for hard-disks
-    # Take this value from the argument passed by the caller.
-    # Getting it from the stack makes the most sense, as ax, cx, and dx are
-    # used for the BIOS call, and bx is used as a destination.
-    movb 0x2(%bp),  %cl
-    movb $0x00, %dh # head number
-    # call
+    call initialiseDisks
+    call clearScreen
 
-hang:
-    jmp .
+    # Load second section into memory
+    # Use the values written into diskPacket at build-time.
+    call readFromHardDrive
+
+    jmp secondStage_start
+    
+
+# Print the location we were called from for debugging purposes.
+errmsg:
+    call BIOSprint
+    popw %ax
+    movw %ax, reg16
+    pushw %ax
+    call printReg
+    ret
+
 
 #include "printing.asm"
-#include "checkstate.asm"
 #include "disk.asm"
 
 datastart
@@ -74,22 +83,74 @@ datastart
 # assembler doesn't know which sections will be linked where.
 # At position 440 into file ( 0x1b8 ) is the Disk signature for UEFI disks.
 # I don't think this really matters.
+diskPacket:
+    # Tell the BIOS that we're not using the `extendedtransferBuffer` element
+    # in this disk address packet.
+    sizeofPacket: .byte 0x10
+    # Byte reserved by specification, must be 0.
+    packetReserved: .byte 0
+    # Calculate the number of blocks needed to load at build-time.
+    # Need to round up so all bytes are included, do this by adding 512 to
+    # 'secondStage_end'.
+    numBlocks:      .word ((secondStage_end + 512) - secondStage_start) / 512
+    # When reading the second part, load the data just after ourselves in
+    # memory. Doesn't really matter where we load it, but that's a nice safe
+    # place.
+    transferBuffer: .long 0x7e00
+    # Where to read from, set by the calling code.
+    startBlock:     .quad 1
+    # The below would be needed if needed to specify a 64 bit address for the
+    # transfer buffer.
+    # extendedtransferBuffer: .quad 0
+
+successMsg: .asciz "YAY"
+
 
 # At position 446 into file ( 0x1be ) is the partition table.
 # I don't think I need to have that correct.
 # For each partition table entry, the first byte determines the boot flag https://en.wikipedia.org/wiki/Boot_flag
 
-    . = _start + 510
+.org 0x1b8
+diskID:
+    .long 0xfeeeebbe
+    .word 0
+partitionTable:
+    partition1:
+        # Status - bit 7 set is for active, or bootable.
+        .byte 0x80
+        # CHS address of first absolute sector in partition
+            # Doesn't seem to matter.
+            .byte 0x00, 0x00, 0x00
+        # Partition type  "BootIt"  (Just like the name).
+        .byte 0xdf
+        # CHS address of last absolute sector in partition
+            .byte 0x00, 0x00, 0x00
+        # LBA of first absolute sector in partition
+        # GRUB recommends 2048 sectors to install itself, so we put the
+        # partition in the same place that GRUB would to ease with transition
+        # in the future.
+            .byte 0x00, 0x08, 0x00, 0x00
+        # Number of sectors in partition.
+        .long 100
+
+.org 510
     .byte 0x55, 0xAA
 
+dataend
 secondstage
 
 #undef datastart
 #undef dataend
-#define datastart .text 4
-#define dataend .text 3
+#define datastart .text 3
+#define dataend .text 2
 
 secondStage_start:
     call enablea20
+    printString($successMsg)
+    jmp .
 
 #include "a20.asm"
+
+datastart
+secondStage_end:
+dataend

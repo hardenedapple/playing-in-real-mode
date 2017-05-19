@@ -9,10 +9,7 @@
 
 .macro ERRMSG str
     movw $\str, %si
-    call printString
-    movw $., %ax
-    movw %ax, reg16
-    call printReg
+    call errmsg
 .endm
 
 _start:
@@ -25,13 +22,13 @@ _start:
 _boot:
     xorw %ax, %ax
     movw %ax, %ds
-    movw %ax, %ss
 
-    # 0x9fc00 - 0x100000 is reserved by the BIOS (as is below 0x500)
-    movw $0x9000, %ax
-    movw %ax, %es
+    # movw $0x9000, %ax
+    # movw %ax, %es
     # Start off with the stack pointer just under the extended segment.
-    movw $0x8ff8, %sp
+    movw $0x8fc0, %ax
+    movw %ax, %ss
+    movw $0xffff, %sp
     sti
 
     # Store the current drive in a known place in memory.
@@ -137,11 +134,6 @@ readFromHardDrive:
     ret
 
 
-DisplayData:
-    movw $0x9000, %si
-    call printString
-    ret
-
 printReg:
     movw $outstr16, %di
     movw reg16, %ax
@@ -162,6 +154,14 @@ hexloop:
     call printString
     ret
 
+
+errmsg:
+    call printString
+    popw %ax
+    movw %ax, reg16
+    pushw %ax
+    call printReg
+    ret
 
 
 .text 1

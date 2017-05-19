@@ -1,5 +1,6 @@
 .file "disk.asm"
-saveDiskNum:
+
+initialiseDisks:
     # BIOS initially puts the disk number that we're booting from into %dl.
     # This register value is also the argument that int 0x13 takes to know
     # which disk number to read from.
@@ -8,60 +9,71 @@ saveDiskNum:
     # This will be
     # 0x00 for first floppy drive, 0x01 for second,
     # 0x80 for first hard drive,   0x81 for second,
-    movb %dl, currentdisk
-    ret
+    movb %dl, curdrive
 
-initialiseDisks:
     # Before interacting with the disks, apparently we have to reset the disk
     # system to a known state using BIOS interrupt
     # vimcmd: e +1579 saved_docs/BIOSinterrupts/INTERRUP.B
     # I read this in saved_docs/bootloader-from-scratch.pdf
-    # TODO
-    ret
-
-getDiskState:
-    # vimcmd: e +2023 saved_docs/BIOSinterrupts/INTERRUP.B
-    # The DISK interrupt that GRUB appears to use (gotten from disassembly of
-    # the MBR on my laptop).
-
-readSector:
-    # Reads into the data buffer pointed to by %es:%bx
-
-    # Store a  record to say how many times I've attempted to read the
-    # data.
-    pushw $0x00
-    jmp 3f
-1:
-    # Failure condition -- try again up to three times
-    popw %ax
-    cmp $0x3, %al
-    jbe 2f
-    movw $msgFail, %si
-    call BIOSprint
-    jmp hang
-2:
-    pushw %ax
-3:
-    movb $0x02, %ah # Read disk function
-    movb (currentdisk), %dl # drive number
+    movb $0, %ah
     int $0x13
-    jc 1b
-    # Call failure function if carry flag is set, or if al is not 1
-    # according to the BIOS list ...
-    # carry flag is set on error
-    #   AH set to 0x11 if corrected ECC error
-    #   AL = burst length
-    # carry flag clear on error
-    #   AH status (see Table 00234) vimcmd: e +/Table\ 00234/ saved_docs/BIOSinterrupts/INTERRUP.B
-    #   AL number of sectors transferred.
-    cmpb $0x01, %al
-    jne 1b
-.LreadSectorFromFloppy:
-    # Just to remove the counter on the stack
-    popw %ax
+    jc 1f
+
+ignoreerror:
+    # Check if LBA is supported.
+    # This bootloader is solely aimed at running on a hard-disk, so without LBA
+    # we're helpless.
+	movb	$0x41, %ah
+	movw	$0x55aa, %bx
+	int	$0x13
+    
+    # Check return values
+	jc  2f
+	cmpw	$0xaa55, %bx
+	jne	2f
+    # Ensure the extended disk access functions are supported.
+	andw	$1, %cx
+	jz	2f
+
+    ret
+1:
+    # Print the status returned.
+    movb $0, %al
+    movw %ax, reg16
+    call printReg
+    ERRMSG(msgDiskFail)
+    # Carry on anyway, see what happens.
+    jmp ignoreerror
+2:
+    ERRMSG(msgNoLBA)
+    jmp .
+
+readFromHardDrive:
+    # Disk packet must be set up by the caller.
+    movb curdrive, %dl # drive number
+    movw $diskPacket, %si
+    movb $0x42, %ah # Read hard-disk function
+    int $0x13
+    jae 1f
+    ERRMSG(msgReadFailed)
+1:
+    # Interrupt description.
+    # vimcmd: e +3590 saved_docs/BIOSinterrupts/INTERRUP.B
+    # Operation status table (error code if there was an error) stored in AH.
+    # it's zero if successful: vimcmd: e +1602 saved_docs/BIOSinterrupts/INTERRUP.B
+    testb %ah, %ah
+    jz 1f
+    ERRMSG(msgReadFailed)
+1:
+    cmpw $0x1, numBlocks
+    jz 1f
+    ERRMSG(msgReadFailed)
+1:
     ret
 
 datastart 
-currentdisk: .byte 0
-msgFail: .asciz "something has gone wrong ..."
+curdrive: .byte 0
+msgDiskFail: .asciz "disk.asm problem"
+msgReadFailed: .asciz "cannot read "
+msgNoLBA: .ascii "no installed LBA "
 dataend

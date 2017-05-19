@@ -8,17 +8,14 @@ enablea20:
     call check_a20
     cmpw $1, %ax
     jne 1f
-    movw $booteda20, %si
-    call BIOSprint
-    jmp done
-
+    printString($booteda20)
+    ret
 1:
     movw $a20attempts, %cx
 
 activatea20Loop:
     movw %cx, %si
-    movw (%si), %si
-    call BIOSprint
+    printString((%si))
     addw $2, %cx
     movw %cx, %si
     movw (%si), %ax
@@ -29,21 +26,16 @@ activatea20Loop:
     cmpw $1, %ax
     je a20done
 
-    movw $notenabledmsg, %si
-    call BIOSprint
+    printString($notenabledmsg)
     cmpw $a20attemptsend, %cx
     ja activatea20failed
     jmp activatea20Loop
 
 a20done:
-    movw $enabledmsg, %si
-    call BIOSprint
-    jmp done
+    printString($enabledmsg)
+    ret
 activatea20failed:
-    movw $a20disabled, %si
-    call BIOSprint
-
-done:
+    printString($a20disabled)
     ret
 
 
@@ -121,6 +113,15 @@ check_a20_exit:
 
 
 fasta20enable:
+    in $0x92, %al
+    testb $2, %al
+    jnz 1f
+    orb $2, %al
+    andb $0xfe, %al
+    outb %al, $0x92
+1:
+    ret
+
 keyboarda20enable:
 biosa20enable:
     pushw %cx
@@ -156,8 +157,7 @@ biosa20enable:
     jmp biosa20enableret
 
 4:
-    movw $faileda20, %si
-    call BIOSprint
+    printString($faileda20)
 5:
     movw $0, %ax
 biosa20enableret:
@@ -168,9 +168,15 @@ datastart
 faileda20:  .asciz "... something went wrong "
 
 a20attempts:
+    # # The below is the recommended order to attempt turning on a20, the
+    # # uncommented order is just for trying things out.
+    # .word biosa20, biosa20enable
+    # .word keyboarda20, keyboarda20enable
+    # .word fasta20, fasta20enable
+    
+    .word fasta20, fasta20enable
     .word biosa20, biosa20enable
     .word keyboarda20, keyboarda20enable
-    .word fasta20, fasta20enable
 a20attemptsend:
 
 
