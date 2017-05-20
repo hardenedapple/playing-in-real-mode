@@ -22,6 +22,7 @@ _start:
     # Set up those segments that we need.
     xorw %ax, %ax
     movw %ax, %ds
+    movw %ax, %es
     # Though you can *address* any size up to 1MB (a little higher once A20 is
     # enabled), only up to 640kB is thought of as free RAM, while the last 384kB of
     # memory is reserved for BIOS use, video memory, memory mapped I/O.
@@ -146,10 +147,15 @@ secondstage
 
 secondStage_start:
     call enablea20
+    call newline
+    call readMemorySize
+
+    # call getready
     printString($successMsg)
     jmp .
 
 #include "a20.asm"
+#include "checkstate.asm"
 
 datastart
 secondStage_end:
