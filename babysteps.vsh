@@ -1,8 +1,14 @@
 vshcmd: > gcc -E boot.S > boot.asm
 vshcmd: > as boot.asm -o boot.o
 vshcmd: > ld --oformat=binary -Ttext 0x7c00 boot.o -o boot
+
+vshcmd: > # Used the following to create totalUSB.img, in the fututre, use
+vshcmd: > # dd to reset the boot partition, and to install my changes.
+vshcmd: > # vshcmd: > cp otherBIOSes/full_debian_install.img ./totalUSB.img
+bootloader [11:44:31] $ 
+vshcmd: > dd if=boot of=total
 vshcmd: > qemu-system-x86_64 -drive file=boot,format=raw
-bootloader [16:11:56] $ 
+bootloader [10:05:53] $ bootloader [10:05:53] $ bootloader [10:05:53] $ bootloader [10:05:58] $ 
 vshcmd: > # Create a hard-drive image using the bximage tool.
 vshcmd: > rm bxcreated.img
 vshcmd: > bximage

@@ -3,6 +3,9 @@
 .text 0
     .globl _start
 
+# The following has some nice pointers for where to look for different things.
+# http://wiki.osdev.org/BIOS
+
 #define datastart .text 1
 #define dataend .text 0
 
@@ -93,7 +96,7 @@ diskPacket:
     # Calculate the number of blocks needed to load at build-time.
     # Need to round up so all bytes are included, do this by adding 512 to
     # 'secondStage_end'.
-    numBlocks:      .word ((secondStage_end + 512) - secondStage_start) / 512
+    numBlocks:      .word (secondStage_end - secondStage_start) / 512
     # When reading the second part, load the data just after ourselves in
     # memory. Doesn't really matter where we load it, but that's a nice safe
     # place.
@@ -123,13 +126,15 @@ partitionTable:
             # Doesn't seem to matter.
             .byte 0x00, 0x00, 0x00
         # Partition type  "BootIt"  (Just like the name).
-        .byte 0xdf
+        partition_type:
+            .byte 0xdf
         # CHS address of last absolute sector in partition
             .byte 0x00, 0x00, 0x00
         # LBA of first absolute sector in partition
         # GRUB recommends 2048 sectors to install itself, so we put the
         # partition in the same place that GRUB would to ease with transition
         # in the future.
+        partition_start:
             .byte 0x00, 0x08, 0x00, 0x00
         # Number of sectors in partition.
         .long 100
@@ -148,15 +153,61 @@ secondstage
 secondStage_start:
     call enablea20
     call newline
-    call readMemorySize
+    # call readMemorySize
+
+    # TODO Check we have enough memory to load the real-mode kernel.
+    # Read how much memory is available (maybe with getLowMemSize), ensure
+    # there is enough for secondStage_end + 0x10000.
+    call readLinux
 
     # call getready
     printString($successMsg)
     jmp .
 
+findLinux:
+    # TODO In the future, we read the partition start from the partition table
+    # (just assume first entry). From that table, we'll check for an
+    # ext[[:digit:]] fileystem, and find a file matching /boot/vmlinuz-linux-* 
+    # The start of that file will be placed in the vmlinuz_block location.
+
+readLinux:
+    movw $2, numBlocks
+    # Load just after us (wherever that may be)
+    movw $secondStage_end, transferBuffer
+    # TODO Currently assuming the block position fits in 32 bits.
+    # Would be nice to allow 64 bits.
+    movl vmlinuz_block, %eax
+    movl %eax, startBlock
+    call readFromHardDrive
+    movl (secondStage_end + 0x202), %eax
+    # This checks for the magic signature telling us the Linux boot segment is
+    # not too old.
+    cmpl $0x53726448, %eax
+    je 1f
+    ERRMSG(msgReadFailed)
+    jmp .
+1:
+    # Read how many setup sectors we have to read underneath the memory
+    # barrier.
+    movb (secondStage_end + 0x1f1), %al
+    movb %al, linuxSetupSectors
+    movb $0, %ah
+    imulw $512, %ax
+    cmpb availSpace, %al 
+    jb 1f
+    ERRMSG(msgNoSpace)
+1:
+    ret
+
 #include "a20.asm"
 #include "checkstate.asm"
 
 datastart
+availSpace: .word 0
+linuxSetupSectors: .byte 0
+vmlinuz_block: .long 1579336
+msgNoMagic: .asciz "no magic linux"
+msgNoSpace: .asciz "not enough space"
+.align 512
 secondStage_end:
 dataend

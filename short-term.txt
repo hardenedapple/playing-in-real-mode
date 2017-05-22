@@ -1,23 +1,77 @@
 Small list of rolling targets.
 
+Find the memory ceiling for our BIOS
+    INT 12 -- used for Linux
+
+Read the vmlinuz-linux real-mode stuff into memory.
+    Take the same method as http://sebastian-plotz.blogspot.co.uk/ does to find
+    the first LBA block of the file and hard-code it into the mbr.
+
+Parse the Linux boot header
+    Find from http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt
+
+Find the vmlinuz-linux file on the first partition.
+    This will require some understanding of the ext\d filesystem.
+
+Boot Linux directly from my bootloader, without using GRUB at all.
+    These websites that might help figure out exactly what to do.
+    http://duartes.org/gustavo/blog/post/kernel-boot-process/
+    http://lxr.linux.no/#linux+v2.6.25.6/Documentation/i386/boot.txt
+    # Newer version of the above
+    # The debian install I have uses linux 3.16, so this might have too much
+    # information, but I expect backwards compatability more than forwards
+    # compatability, so the 4.10 docs should be better than the 2.6 docs
+    http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt
+    Minimal linux bootloader (I have copied the assembly file into
+    otherBIOSes/sebastian-minimal-linux-bootloader.asm)
+    http://sebastian-plotz.blogspot.co.uk/
+    Install Linux in a partition on a USB stick, set things up like GRUB would,
+    load the environment and jump to the correct place.
+
+    Menu entry of loading Debian GNU/Linux from the Debian grub.cfg
+    ```
+    menuentry 'Debian GNU/Linux' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-simple-ff9be8c0-4821-4d00-8046-78db6f7303b4' {
+        load_video
+        insmod gzio
+        if [ x$grub_platform = xxen ]; then insmod xzio; insmod lzopio; fi
+        insmod part_msdos
+        insmod ext2
+        set root='hd2,msdos1'
+        if [ x$feature_platform_search_hint = xy ]; then
+          search --no-floppy --fs-uuid --set=root --hint-ieee1275='ieee1275//sas/disk@0,msdos1' --hint-bios=hd2,msdos1 --hint-efi=hd2,msdos1 --hint-baremetal=ahci2,msdos1  ff9be8c0-4821-4d00-8046-78db6f7303b4
+        else
+          search --no-floppy --fs-uuid --set=root ff9be8c0-4821-4d00-8046-78db6f7303b4
+        fi
+        echo	'Loading Linux 3.16.0-4-686-pae ...'
+        linux	/boot/vmlinuz-3.16.0-4-686-pae root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro  quiet
+        echo	'Loading initial ramdisk ...'
+        initrd	/boot/initrd.img-3.16.0-4-686-pae
+    }
+    ```
+    
+    Current understanding:
+        Find the LBA location of the first partition by reading the partition
+        sector.
+        Check that the partition is ext\d (TODO -- find out how)
+        Use knowledge of the filesystem to find vmlinuz
+
+UI
+    All I want in terms of UI is to have two descriptions ("boot linux", and
+    "as root"), I should be able to press an arrow key to select which to boot.
+
+Enable protected mode
+    This is actually reasonably easy -- I did it as part of a tutorial a while
+    ago and had a play-around with segment caching.
+    When to do it in the boot process I don't know (should it be early so that
+    I get to use it while loading Linux, should it be late so as to keep the
+    bootloader un-complex).
+
 First off, attempt *some* multiboot specification stuff.
     The manual mentions state that a multiboot compliant bootloader must leave
     the machine in by the time the kernel is booted..
     Implement these things one by one.
     https://www.gnu.org/software/grub/manual/multiboot/multiboot.html#Machine-state
 
-PUTOFF Jump into GRUB from my bootloader:
-    Install GRUB in the partition boot section (not sure what this means), and
-    jump into that sector from my bootloader.
-    Will have to relocate the code that does the moving of GRUB so that it
-    doesn't overwrite itself while copying GRUB into the relevant location in
-    memory.
-
-    https://richardfearn.wordpress.com/2008/03/14/chainloading-from-one-grub-to-another/
-
-Boot Linux directly from my bootloader, without using GRUB at all.
-    Install Linux in a partition on a USB stick, set things up like GRUB would,
-    load the environment and jump to the correct place.
 
 Boot Windows directly from my bootloader (on this machine -- eek!)
     Should be pretty much the same -- assuming the windows bootloader knows
@@ -28,3 +82,21 @@ Full Multiboot implementation for ext3 filesystem.
     http://wiki.osdev.org/Multiboot
 
 Why is it that `bochs -qf bochsrc.txt` behaves differently to `bochs -f bochsrc.txt`.
+
+
+PUTOFF Jump into GRUB from my bootloader:
+    Install GRUB in the partition boot section (not sure what this means), and
+    jump into that sector from my bootloader.
+    Will have to relocate the code that does the moving of GRUB so that it
+    doesn't overwrite itself while copying GRUB into the relevant location in
+    memory.
+
+    https://richardfearn.wordpress.com/2008/03/14/chainloading-from-one-grub-to-another/
+
+
+
+Total Target:
+    Boot Linux off an ext[[:digit:]] filesystem.
+    Linux must be in the first partition of the filesystem.
+    Must be on the same USB stick as the bootloader.
+

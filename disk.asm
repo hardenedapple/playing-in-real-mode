@@ -75,6 +75,17 @@ readFromHardDrive:
 1:
     ret
 
+copyExtendedMemory:
+    # Linux needs 0x8000 for the kernel setup and boot sector
+    # *after* that, it needs another 0x8000 for the stack & heap (totalling
+    # 0x10000).
+    # http://lxr.linux.no/linux+*/Documentation/x86/boot.txt#L92
+    # The boot documentation says to use INT 0x12 to find how much memory we
+    # have available.
+    # vimcmd: e +5602 saved_docs/BIOSinterrupts/INTERRUP.C
+    # Also described here
+    # http://webpages.charter.net/danrollins/techhelp/0222.HTM
+
 datastart 
 curdrive: .byte 0
 msgDiskFail: .asciz "disk.asm problem"
