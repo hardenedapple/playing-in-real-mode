@@ -13,6 +13,7 @@
 
 #define printString(str) movw str, %si; call BIOSprint
 #define ERRMSG(str) movw $str, %si; call errmsg
+#define BADREG(reg, str) movw reg, reg16; call printReg; ERRMSG(str)
 
 _bootsector:
     # Just in case any odd BIOS has a non-standard %cs:%eip setup.
@@ -81,6 +82,7 @@ errmsg:
 
 #include "printing.asm"
 #include "disk.asm"
+.file "boot.S"
 
 datastart
 # Data section -- using text subsection so that I can use the . = _start idiom.
@@ -163,10 +165,20 @@ secondStage_start:
     int $0x12
     # Return is AX = kilobytes of contiguous memory starting at absolute
     # address 00000h.
+    # Convert into number of blocks available after the bootloader (i.e. times
+    # 2 for kilobytes -> blocks).
+    shlw %ax
+    jnc 1f
+    BADREG(%ax, msgTooMuchSpace)
+1:
+    # Subtract the space taken up by our bootloader.
+    # Can't just use secondStage_end / 0x200 as the assembler doesn't know
+    # where secondStage_end is before the linker acts, and the linker has no
+    # way to do arithmetic. 
+    # boot.S:216: Error: invalid operands (.text and *ABS* sections) for `/'
+    # Instead use the offset, which the assembler does know.
+    subw $(((secondStage_end - _bootsector + 0x7c00) / 0x200) + 1), %ax
     movw %ax, availSpace
-    # TODO Find the lower limit of the space used by the BIOS and subtract that
-    # from the total space. I should then check that against the space required
-    # for Linux.
 
     call readLinux
 
@@ -195,42 +207,39 @@ readLinux:
     cmpl $0x53726448, %eax
     je 1f
     ERRMSG(msgReadFailed)
-    jmp .
+    ret
+1:
+    # Check the protocol is greater than 2.04 (if not, that means the 'syssize'
+    # member of the info flags isn't reliable, I don't account for that).
+    movw (secondStage_end + 0x206), %ax
+    cmpw $0x204, %ax
+    jae 1f
+    BADREG(%ax, msgBadVersion)
 1:
     # Read how many setup sectors we have to read underneath the memory
     # barrier.
     xorl %eax, %eax
     movb (secondStage_end + 0x1f1), %al
+    # If field is zero, real value is 4 http://lxr.linux.no/linux+*/Documentation/x86/boot.txt#L243
+    cmpb $0, %al
+    je 1f
+    movb $4, %al
+1:
     movb %al, linuxSetupSectors
-    # Turn sectors into kilobytes by dividing by two,
-    # add one to %al to round up to nearest kilobyte.
-    addb $1, %al
-    movw $2, %bx
-    # Overflow is indicated with the #DE (divide error) exception rather than
-    # with the CF flag.
-    # This happens when dx:ax / Source  > 0xffff
-    # We have to zero %dx to ensure we get the correct value *and* to make sure
-    # we don't freeze the machine.
-    xor %dx, %dx
-    divw %bx
     # Add recommended amount of space for the stack and heap
-    addw $0x40, %ax
-    # Add the space taken up by our bootloader.
-    # Can't just use secondStage_end / 0x400 as the assembler doesn't know
-    # where secondStage_end is before the linker acts, and the linker has no
-    # way to do arithmetic. 
-    # boot.S:216: Error: invalid operands (.text and *ABS* sections) for `/'
-    # Instead use the offset, which the assembler does know.
-    addw $(((secondStage_end - _bootsector + 0x7c00) / 0x400) + 1), %ax
-    # TODO Check we have enough memory to load the real-mode kernel.
-    # Read how much memory is available (maybe with getLowMemSize), ensure
-    # there is enough for secondStage_end + 0x10000.
+    addw $0x80, %ax
     cmpw availSpace, %ax 
     jb 1f
-    movw %ax, reg16
-    call printReg
-    ERRMSG(msgNoSpace)
+    BADREG(%ax, msgNoSpace)
 1:
+    # Read in all of the real-mode code from the file
+    # Doesn't matter that we're overwriting the two blocks we just read.
+    # There is a maximum number of blocks allowed to transfer, as mentioned
+    # here vimcmd: e +3606 saved_docs/BIOSinterrupts/INTERRUP.B
+    movw %ax, numBlocks
+    call readFromHardDrive
+
+    # Work with syssize.
     ret
 
 #include "a20.asm"
@@ -239,9 +248,15 @@ readLinux:
 datastart
 availSpace: .word 0
 linuxSetupSectors: .byte 0
+linuxProtectedSize: .long 0
+
 vmlinuz_block: .long 1579336
+msgTooMuchSpace: .asciz "Overflow calculating space"
 msgNoMagic: .asciz "no magic linux"
+msgBadVersion: .asciz "old Linux boot version"
 msgNoSpace: .asciz "not enough space"
+
+linuxCmdLine: .asciz "root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro  quiet"
 .align 512
 secondStage_end:
 dataend

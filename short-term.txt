@@ -1,7 +1,10 @@
 Small list of rolling targets.
 
-Find the memory ceiling for our BIOS
-    INT 12 -- used for Linux
+Account for the maximum number of blocks when reading from hard-drive
+    Have to loop until we have as much as we want.
+    While looping will need to increment transferBuffer.
+    May as count based on how many blocks were actually transferred, which will
+    provide proper handling code for the assertion at the end of the function.
 
 Read the vmlinuz-linux real-mode stuff into memory.
     Take the same method as http://sebastian-plotz.blogspot.co.uk/ does to find

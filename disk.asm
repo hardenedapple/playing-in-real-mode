@@ -49,6 +49,14 @@ ignoreerror:
     jmp .
 
 readFromHardDrive:
+    # NOTE
+    #   The disk packet should not be changed over this function.
+    #   Any values we change, we should save on the stack and restore when
+    #   exiting.
+
+    # TODO There is a maximum number of blocks allowed to transfer, as mentioned
+    # here vimcmd: e +3606 saved_docs/BIOSinterrupts/INTERRUP.B
+
     # Store the number of packets that we're requesting to be read.
     # This allows us to check the number we've requested is the same number
     # we received.
@@ -67,8 +75,10 @@ readFromHardDrive:
     # it's zero if successful: vimcmd: e +1602 saved_docs/BIOSinterrupts/INTERRUP.B
     testb %ah, %ah
     jz 1f
-    ERRMSG(msgReadFailed)
+    BADREG(%ax, msgReadFailed)
 1:
+    # TODO Instead of just failing if less than the requested number of blocks
+    # were loaded, loop until we get what we need.
     cmpw %cx, numBlocks
     jz 1f
     ERRMSG(msgReadFailed)
@@ -92,3 +102,4 @@ msgDiskFail: .asciz "disk.asm problem"
 msgReadFailed: .asciz "cannot read "
 msgNoLBA: .ascii "no installed LBA "
 dataend
+
