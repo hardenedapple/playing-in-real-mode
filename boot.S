@@ -14,6 +14,7 @@
 #define printString(str) movw str, %si; call BIOSprint
 #define ERRMSG(str) movw $str, %si; call errmsg
 
+_bootsector:
     # Just in case any odd BIOS has a non-standard %cs:%eip setup.
     ljmp $0, $_start
 _start:
@@ -153,11 +154,20 @@ secondstage
 secondStage_start:
     call enablea20
     call newline
-    # call readMemorySize
+    # Alternate function to find memory size.
+    #   This is mentioned at
+    #   http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt#L85
+    #   vimcmd: e +1417 saved_docs/BIOSinterrupts/INTERRUP.B
+    #   as the interrupt the boot loader should use to verify how much low memory
+    #   is available.
+    int $0x12
+    # Return is AX = kilobytes of contiguous memory starting at absolute
+    # address 00000h.
+    movw %ax, availSpace
+    # TODO Find the lower limit of the space used by the BIOS and subtract that
+    # from the total space. I should then check that against the space required
+    # for Linux.
 
-    # TODO Check we have enough memory to load the real-mode kernel.
-    # Read how much memory is available (maybe with getLowMemSize), ensure
-    # there is enough for secondStage_end + 0x10000.
     call readLinux
 
     # call getready
@@ -189,12 +199,36 @@ readLinux:
 1:
     # Read how many setup sectors we have to read underneath the memory
     # barrier.
+    xorl %eax, %eax
     movb (secondStage_end + 0x1f1), %al
     movb %al, linuxSetupSectors
-    movb $0, %ah
-    imulw $512, %ax
-    cmpb availSpace, %al 
+    # Turn sectors into kilobytes by dividing by two,
+    # add one to %al to round up to nearest kilobyte.
+    addb $1, %al
+    movw $2, %bx
+    # Overflow is indicated with the #DE (divide error) exception rather than
+    # with the CF flag.
+    # This happens when dx:ax / Source  > 0xffff
+    # We have to zero %dx to ensure we get the correct value *and* to make sure
+    # we don't freeze the machine.
+    xor %dx, %dx
+    divw %bx
+    # Add recommended amount of space for the stack and heap
+    addw $0x40, %ax
+    # Add the space taken up by our bootloader.
+    # Can't just use secondStage_end / 0x400 as the assembler doesn't know
+    # where secondStage_end is before the linker acts, and the linker has no
+    # way to do arithmetic. 
+    # boot.S:216: Error: invalid operands (.text and *ABS* sections) for `/'
+    # Instead use the offset, which the assembler does know.
+    addw $(((secondStage_end - _bootsector + 0x7c00) / 0x400) + 1), %ax
+    # TODO Check we have enough memory to load the real-mode kernel.
+    # Read how much memory is available (maybe with getLowMemSize), ensure
+    # there is enough for secondStage_end + 0x10000.
+    cmpw availSpace, %ax 
     jb 1f
+    movw %ax, reg16
+    call printReg
     ERRMSG(msgNoSpace)
 1:
     ret
