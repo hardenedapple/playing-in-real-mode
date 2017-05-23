@@ -234,6 +234,8 @@ readLinux:
 1:
     # Read in all of the real-mode code from the file
     # Doesn't matter that we're overwriting the two blocks we just read.
+    xorw %ax, %ax
+    movb linuxSetupSectors, %al
     movw %ax, numBlocks
     call readFromHardDrive
 
