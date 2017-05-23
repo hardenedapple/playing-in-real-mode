@@ -203,7 +203,7 @@ readLinux:
     call readFromHardDrive
     movl (secondStage_end + 0x202), %eax
     # This checks for the magic signature telling us the Linux boot segment is
-    # not too old.
+    # not too old it is the magic number "HdrS".
     cmpl $0x53726448, %eax
     je 1f
     ERRMSG(msgReadFailed)
@@ -226,8 +226,9 @@ readLinux:
     movb $4, %al
 1:
     movb %al, linuxSetupSectors
-    # Add recommended amount of space for the stack and heap
-    addw $0x80, %ax
+    # Add recommended amount of space for the stack and heap, plus one sector
+    # for the linux command line.
+    addw $0x81, %ax
     cmpw availSpace, %ax 
     jb 1f
     BADREG(%ax, msgNoSpace)
@@ -239,7 +240,82 @@ readLinux:
     movw %ax, numBlocks
     call readFromHardDrive
 
-    # Work with syssize.
+    # Work with syssize.  0x1f4/4 defines number of 16-byte paragraphs for the
+    # protected-mode code.
+
+    # ram_size is obsolete
+    # vid_mode can be ignored -- if user puts "vga=<mode>" on command line,
+    #   should place a number corresponding to the given mode in this position.
+    # root_dev deprecated for the "root=" argument on the command line.
+    # jump -- x86 jump instruction, can be used to determine size of header.
+    # header -- magic number -- inspected above.
+    # version -- used above
+    # realmode_swtch -- bootloader hook to be used as last-resort.
+    # start_sys_seg -- obsolete
+    # kernel_version -- can point to NUL-terminated human-readable kernel
+    #                   version number string. Don't need it.
+    #                   Have checked manually this works -- when I checked it
+    #                   all was fine.
+
+    # type_of_loader -- obligatory byte, I use unregistered.
+    movb $0xff, secondStage_end + 0x210
+
+    # loadflags
+    #   Bit 0 defines whether we should load protected-mode code at 0x10000 or
+    #   at 0x100000, I know this is set on my test kernel.
+    movb secondStage_end + 0x211, %al
+    #   Bit 1 i used internally to decide whether to use KASLR -- we can't do
+    #   anything about it.
+
+    #   Bit 5 asks the kernel to suppress early messages.
+    #   I know this is unset by default on my test kernel, but enure it's unset
+    #   anyway.
+    andb $(~(1 << 4)), %al
+    #   Bit 6 informs the kernel that the segments are all valid when in the 32
+    #   bit entry point.
+    #   Unset that to get the kernel to do the work for us.
+    andb $(~(1 << 5)), %al
+    #   TODO Bit 7 indicates that the value stored in heap_end_ptr is valid and
+    #   hence that the kernel can use the head.
+    #   We unset it for now to avoid doing any more work than we need, but in
+    #   the future will want to set it to enable for functionality.
+    andb $(~(1 << 6)), %al
+    movb %al, secondStage_end + 0x211
+    testb $0x1, %al
+    movl $0x10000, %eax
+    jz 1f
+    imull $0x10, %eax
+1:
+    movl %eax, protectedLoadAddr
+
+    # setup_move_size -- can be ignored if protocol is 2.02 or higher.
+    #                   I check above that protocol >= 2.04
+    # code32_start -- optional, either bootloader hook or loading at
+    #                 nonstandard address.
+    
+    # ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
+    #                   leave at zero if no initial ramdisk.
+    movl secondStage_end + 0x218, %eax
+    cmpl $0, %eax
+    je 1f
+    BADREG(%ax, msgRamdiskNotZero)
+1:
+    # ramdisk_size -- size of initial ramdisk or ramfs
+    #                   leave at zero if no initial ramdisk.
+    movl secondStage_end + 0x21c, %eax
+    cmpl $0, %eax
+    je 1f
+    BADREG(%ax, msgRamdiskSizeNotZero)
+1:
+    # bootsect_kludge -- obsolete
+    # ext_loader_ver  -- don't need to write
+    #                    vimcmd: e +498 Linux_Documentation_x86_boot.txt
+    # ext_loader_type -- don't need to write
+
+    # TODO cmd_line_ptr   -- where we store the linux command line.
+    #
+    # initrd_addr_max -- read to do with ramdisk -- don't need
+    # Current position vimcmd: e +543 Linux_Documentation_x86_boot.txt
     ret
 
 #include "a20.asm"
@@ -250,8 +326,11 @@ availSpace: .word 0
 linuxSetupSectors: .byte 0
 linuxProtectedSize: .long 0
 
+protectedLoadAddr: .long 0x100000
 vmlinuz_block: .long 1579336
 msgTooMuchSpace: .asciz "Overflow calculating space"
+msgRamdiskNotZero: .asciz "Initial ramdisk pointer is not 0"
+msgRamdiskSizeNotZero: .asciz "Initial ramdisk size is not 0"
 msgNoMagic: .asciz "no magic linux"
 msgBadVersion: .asciz "old Linux boot version"
 msgNoSpace: .asciz "not enough space"
