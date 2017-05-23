@@ -177,7 +177,7 @@ secondStage_start:
     # way to do arithmetic. 
     # boot.S:216: Error: invalid operands (.text and *ABS* sections) for `/'
     # Instead use the offset, which the assembler does know.
-    subw $(((secondStage_end - _bootsector + 0x7c00) / 0x200) + 1), %ax
+    subw $(((secondStage_end - _bootsector + 0x7c00) / 0x200)), %ax
     movw %ax, availSpace
 
     call readLinux
