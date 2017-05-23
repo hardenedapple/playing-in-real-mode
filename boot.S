@@ -222,7 +222,7 @@ readLinux:
     movb (secondStage_end + 0x1f1), %al
     # If field is zero, real value is 4 http://lxr.linux.no/linux+*/Documentation/x86/boot.txt#L243
     cmpb $0, %al
-    je 1f
+    jne 1f
     movb $4, %al
 1:
     movb %al, linuxSetupSectors
@@ -234,8 +234,6 @@ readLinux:
 1:
     # Read in all of the real-mode code from the file
     # Doesn't matter that we're overwriting the two blocks we just read.
-    # There is a maximum number of blocks allowed to transfer, as mentioned
-    # here vimcmd: e +3606 saved_docs/BIOSinterrupts/INTERRUP.B
     movw %ax, numBlocks
     call readFromHardDrive
 

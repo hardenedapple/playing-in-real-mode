@@ -56,7 +56,20 @@ readFromHardDrive:
 
     # TODO There is a maximum number of blocks allowed to transfer, as mentioned
     # here vimcmd: e +3606 saved_docs/BIOSinterrupts/INTERRUP.B
-
+    movw numBlocks, %ax
+1:
+    pushw %ax
+    andw $0x7f, %ax
+    movw %ax, numBlocks
+    call doRead
+    popw %ax
+    subw $0x80, %ax
+    ja 1b
+    ret
+2:
+    subw numBlocks, %cx
+    movw %cx, numBlocks
+doRead:
     # Store the number of packets that we're requesting to be read.
     # This allows us to check the number we've requested is the same number
     # we received.
@@ -79,8 +92,9 @@ readFromHardDrive:
 1:
     # TODO Instead of just failing if less than the requested number of blocks
     # were loaded, loop until we get what we need.
-    cmpw %cx, numBlocks
+    cmpw numBlocks, %cx
     jz 1f
+    ja 2b
     ERRMSG(msgReadFailed)
 1:
     ret
