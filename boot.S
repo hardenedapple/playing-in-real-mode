@@ -228,7 +228,7 @@ readLinux:
     movb %al, linuxSetupSectors
     # Add recommended amount of space for the stack and heap, plus one sector
     # for the linux command line.
-    addw $0x81, %ax
+    addw $0x41, %ax
     cmpw availSpace, %ax 
     jb 1f
     BADREG(%ax, msgNoSpace)
