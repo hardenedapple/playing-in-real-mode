@@ -68,7 +68,7 @@ _start:
     call readFromHardDrive
 
     jmp secondStage_start
-    
+
 
 # Print the location we were called from for debugging purposes.
 errmsg:
@@ -153,6 +153,12 @@ secondstage
 #define datastart .text 3
 #define dataend .text 2
 
+secondStage_end_addr = (secondStage_end - _bootsector + 0x7c00)
+# n.b. know because I aligned it with segment break that both of these have no
+# rounding.
+secondStage_end_sector = secondStage_end_addr / 0x200
+secondStage_end_segment = secondStage_end_addr / 0x10
+
 secondStage_start:
     call enablea20
     call newline
@@ -174,13 +180,33 @@ secondStage_start:
     # Subtract the space taken up by our bootloader.
     # Can't just use secondStage_end / 0x200 as the assembler doesn't know
     # where secondStage_end is before the linker acts, and the linker has no
-    # way to do arithmetic. 
+    # way to do arithmetic.
     # boot.S:216: Error: invalid operands (.text and *ABS* sections) for `/'
     # Instead use the offset, which the assembler does know.
-    subw $(((secondStage_end - _bootsector + 0x7c00) / 0x200)), %ax
+    subw $secondStage_end_sector, %ax
     movw %ax, availSpace
 
     call readLinux
+
+    # Following the below vimcmd: e +965 Linux_Documentation_x86_boot.txt
+    movw linuxSetupSectors, %ax
+    addw $0x40, %ax
+    imulw $0x200, %ax
+    movw %ax, %sp
+    # Second stage end segment
+    movw $secondStage_end_segment, %ax
+    movw %ax, %ds
+    movw %ax, %ss
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
+    addw $0x20, %ax
+    # Need a memory address to place directly in the instruction stream.
+    # The first sector of the real-mode kernel code is not used.
+    # We store the address to long-jump to in the first word of that unused
+    # sector.
+    movw %ax, 0
+    ljmpw $0, $secondStage_end_segment
 
     # call getready
     printString($successMsg)
@@ -189,8 +215,12 @@ secondStage_start:
 findLinux:
     # TODO In the future, we read the partition start from the partition table
     # (just assume first entry). From that table, we'll check for an
-    # ext[[:digit:]] fileystem, and find a file matching /boot/vmlinuz-linux-* 
+    # ext[[:digit:]] fileystem, and find a file matching /boot/vmlinuz-linux-*
     # The start of that file will be placed in the vmlinuz_block location.
+
+    # insert a nop so the symbols findLinux and readLinux are different.
+    # With them being the same, the output from objdump only shows findLinux.
+    nop
 
 readLinux:
     movw $2, numBlocks
@@ -229,7 +259,7 @@ readLinux:
     # Add recommended amount of space for the stack and heap, plus one sector
     # for the linux command line.
     addw $0x41, %ax
-    cmpw availSpace, %ax 
+    cmpw availSpace, %ax
     jb 1f
     BADREG(%ax, msgNoSpace)
 1:
@@ -240,8 +270,6 @@ readLinux:
     movw %ax, numBlocks
     call readFromHardDrive
 
-    # Work with syssize.  0x1f4/4 defines number of 16-byte paragraphs for the
-    # protected-mode code.
 
     # ram_size is obsolete
     # vid_mode can be ignored -- if user puts "vga=<mode>" on command line,
@@ -275,11 +303,9 @@ readLinux:
     #   bit entry point.
     #   Unset that to get the kernel to do the work for us.
     andb $(~(1 << 5)), %al
-    #   TODO Bit 7 indicates that the value stored in heap_end_ptr is valid and
+    #   Bit 7 indicates that the value stored in heap_end_ptr is valid and
     #   hence that the kernel can use the head.
-    #   We unset it for now to avoid doing any more work than we need, but in
-    #   the future will want to set it to enable for functionality.
-    andb $(~(1 << 6)), %al
+    orb $(1 << 6), %al
     movb %al, secondStage_end + 0x211
     testb $0x1, %al
     movl $0x10000, %eax
@@ -292,7 +318,7 @@ readLinux:
     #                   I check above that protocol >= 2.04
     # code32_start -- optional, either bootloader hook or loading at
     #                 nonstandard address.
-    
+
     # ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
     #                   leave at zero if no initial ramdisk.
     movl secondStage_end + 0x218, %eax
@@ -308,15 +334,113 @@ readLinux:
     BADREG(%ax, msgRamdiskSizeNotZero)
 1:
     # bootsect_kludge -- obsolete
+    # heap_end_ptr -- handled below
     # ext_loader_ver  -- don't need to write
     #                    vimcmd: e +498 Linux_Documentation_x86_boot.txt
     # ext_loader_type -- don't need to write
 
-    # TODO cmd_line_ptr   -- where we store the linux command line.
-    #
+    # cmdline_size -- Check our command line isn't too large.
+    movl secondStage_end + 0x238, %eax
+    cmpl $linuxCmdLineSize, %eax
+    jae 1f
+    BADREG(%ax, msgCMDtooLong)
+1:
+    xorl %eax, %eax
+    # cmd_line_ptr   -- where we store the linux command line.
+    movb linuxSetupSectors, %al
+    addw $0x40, %ax
+    addw $secondStage_end_sector, %ax
+    # * 512 / 16
+    # Must be less than the size of the register because we know the size fits
+    # within the available space in the 16bit address space.
+    imulw $0x20, %ax
+    movw %ax, %es
+    # Store the cmd_line_ptr in the Linux header, put the flat 32 bit address
+    # into %eax.
+    imull $0x10, %eax
+    movl %eax, secondStage_end + 0x228
+    movw $0, %di
+    movw $linuxCmdLine, %si
+    movw $linuxCmdLineSize, %cx
+
+    # es:di == [destination]:0
+    # ds:si == 0:linuxCmdLine
+    # cx    == linuxCmdLineSize
+    rep; movsb
+
+    # Reset the extended segment.
+    xorw %ax, %ax
+    movw %ax, %es
+
+    # heap_end_ptr -- offset from beginning of real-mode code to end of
+    #                   stack/heap, minus 0x200
+    # real-mode code
+    movb linuxSetupSectors, %al
+    # Plus heap space minus 0x200
+    addw $0x3f, %ax
+    imulw $0x200, %ax
+    movw %ax, secondStage_end + 0x224
+
     # initrd_addr_max -- read to do with ramdisk -- don't need
-    # Current position vimcmd: e +543 Linux_Documentation_x86_boot.txt
+    # kernel_alignment -- Don't bother with this as not relocating the kernel.
+    # relocatable_kernel -- Don't bother with this as not relocating the kernel.
+    # min_alignment -- Don't bother with this as not relocating the kernel.
+    # xloadflags:
+    #   Bit 1 specifies whether things can be above 4G (ignore, not doing it)
+    #   Bit 2, 3, and 4, talk about EFI (ignore, not doing it).
+    #   Bit 0 mentions whether the kernel has the legacy 64-bit entry point at
+    #           0x200
+
+    # cmdline_size -- handled above
+    # hardware_subarch -- paravirtualized environments, optional, are ignoring.
+    #   vimcmd: e +630 Linux_Documentation_x86_boot.txt
+    # hardware_subarch_data -- unused for x86
+    # payload_offset -- offset from beginning of protected-mode code to
+    #                   payload, don't know if I need this.
+    # payload_length -- length of payload.
+    # setup_data -- extra information to the kernel.
+    #               don't think I need it.
+
+    # pref_address -- preferred load address for the kernel.
+    #   a relocating bootloader should attempt to load at this address.
+    #   I'm not a relocating bootloader -- I believe I can ignore this.
+
+    # init_size -- doesn't seem to be needed.
+    # handover_offset -- for EFI, can ignore.
+
+    # TODO Implement read32bitLinux
+    # Work with syssize.  0x1f4/4 defines number of 16-byte paragraphs for the
+    # protected-mode code.
+    # call read32bitLinux
+
     ret
+
+read32bitLinux:
+    # Have to make sure we only use the spare space.
+    # That is the space after secondStage_end + linuxSetupSectors*512
+    # Only read in 0x7f sectors at a time (this limit comes from the BIOS
+    # interrupt -- see readFromHardDrive).
+    # Double check that 0x7f is less than availSpace - linuxSetupSectors
+    #
+    movl secondStage_end + 0x1f4, %eax
+    movl $0, %edx
+    movl $(0x200 / 0x10), %ebx
+    divl %ebx
+    # Round up if there's a remainder.
+    cmpl $0, %edx
+    je 1f
+    incl %eax
+1:
+    # Here, %eax contains the number of segments we need to read.
+    cmpl $0xffff, %eax
+    jb 1f
+    ERRMSG(msgTooMuchProtected)
+    jmp .
+1:
+    movw %ax, protectedSegments
+
+
+
 
 #include "a20.asm"
 #include "checkstate.asm"
@@ -334,8 +458,18 @@ msgRamdiskSizeNotZero: .asciz "Initial ramdisk size is not 0"
 msgNoMagic: .asciz "no magic linux"
 msgBadVersion: .asciz "old Linux boot version"
 msgNoSpace: .asciz "not enough space"
+msgCMDtooLong: .asciz "linux command line too large"
+msgTooMuchProtected: .asciz "too much protected kernel to read"
 
-linuxCmdLine: .asciz "root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro  quiet"
+readAddr: .word 0
+moveAddr: .long 0
+protectedSegments: .word 0
+
+
+# TODO Allow user to choose command line.
+# linuxCmdLine: .asciz "root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro  quiet"
+linuxCmdLine: .asciz "auto"
+linuxCmdLineSize = . - linuxCmdLine
 .align 512
 secondStage_end:
 dataend
