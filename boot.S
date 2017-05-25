@@ -6,6 +6,20 @@
 // The following has some nice pointers for where to look for different things.
 // http://wiki.osdev.org/BIOS
 
+// Memory layout:
+//  0x7c00 -- 0x8600  bootloader code
+//  0x8600 -- 0x8800  Linux boot code
+//  0x8800 -- (0x21 * 0x200) + 0x8800 = 0xca00  Linux setup code
+//  0xca00 -- (0x7f * 0x200) + 0xca00 = 0x1c800 Temporary area for reading in Linux protected code
+//      Also
+//  0xca00 -- (0x40 * 0x200) + 0xca00 = 0x14a00 stack & heap for linux
+//  0x14c00 Kernel command line.
+//
+//  base_ptr = 0x8800
+//  heap_end = (0x14a00 - 0x8600) = 0xc400
+//  heap_end_ptr = heap_end - 0x200 = 0xc200
+//  cmd_line_ptr = base_ptr + heap_end = 0x8800 + 0x14a00
+
 #define datastart .text 1
 #define dataend .text 0
 
@@ -159,9 +173,10 @@ secondStage_end_addr = (secondStage_end - _bootsector + 0x7c00)
 secondStage_end_sector = secondStage_end_addr / 0x200
 secondStage_end_segment = secondStage_end_addr / 0x10
 
+#define HEAP_SEGMENTS 0x40
 secondStage_start:
-    call enablea20
-    call newline
+    // call enablea20
+    // call newline
     // Alternate function to find memory size.
     //   This is mentioned at
     //   http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt#L85
@@ -189,8 +204,9 @@ secondStage_start:
     call readLinux
 
     // Following the below vimcmd: e +965 Linux_Documentation_x86_boot.txt
-    movw linuxSetupSectors, %ax
-    addw $0x40, %ax
+    xorw %ax, %ax
+    movb linuxSetupSectors, %al
+    addw $HEAP_SEGMENTS, %ax
     imulw $0x200, %ax
     movw %ax, %sp
     // Second stage end segment
@@ -200,13 +216,13 @@ secondStage_start:
     movw %ax, %es
     movw %ax, %fs
     movw %ax, %gs
-    # addw $0x20, %ax
     // Need a memory address to place directly in the instruction stream.
     // The first sector of the real-mode kernel code is not used.
     // We store the address to long-jump to in the first word of that unused
     // sector.
-    # movw %ax, 0
     cli
+    // TODO Have hard-coded the position to jump to $(secondStage_end_segment + 0x20)
+    // Would be nice to have it calculated.
     ljmp $0x880, $0
 
     // call getready
@@ -261,7 +277,7 @@ readLinux:
     movb %al, linuxSetupSectors
     // Add recommended amount of space for the stack and heap, plus one sector
     // for the linux command line.
-    addw $0x41, %ax
+    addw $(HEAP_SEGMENTS + 1), %ax
     cmpw availSpace, %ax
     jb 1f
     BADREG(%ax, msgNoSpace)
@@ -301,14 +317,14 @@ readLinux:
     //   Bit 5 asks the kernel to suppress early messages.
     //   I know this is unset by default on my test kernel, but enure it's unset
     //   anyway.
-    andb $(~(1 << 4)), %al
+    andb $(~(1 << 5)), %al
     //   Bit 6 informs the kernel that the segments are all valid when in the 32
     //   bit entry point.
     //   Unset that to get the kernel to do the work for us.
-    andb $(~(1 << 5)), %al
+    andb $(~(1 << 6)), %al
     //   Bit 7 indicates that the value stored in heap_end_ptr is valid and
     //   hence that the kernel can use the head.
-    orb $(1 << 6), %al
+    orb $(1 << 7), %al
     movb %al, secondStage_end + 0x211
     testb $0x1, %al
     movl $0x10000, %eax
@@ -354,7 +370,7 @@ readLinux:
     xorw %ax, %ax
     movb linuxSetupSectors, %al
     // Plus heap space minus 0x200
-    addw $0x3f, %ax
+    addw $(HEAP_SEGMENTS - 1), %ax
     imulw $0x200, %ax
     movw %ax, secondStage_end + 0x224
 
@@ -396,7 +412,7 @@ readLinux:
     xorl %eax, %eax
     // cmd_line_ptr   -- where we store the linux command line.
     movb linuxSetupSectors, %al
-    addw $0x40, %ax
+    addw $HEAP_SEGMENTS, %ax
     addw $secondStage_end_sector, %ax
     // * 512 / 16
     // Must be less than the size of the register because we know the size fits
