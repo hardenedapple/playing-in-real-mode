@@ -1,10 +1,10 @@
-# NOTE
-#   All methods talking about A20 line are listed here
-#       http://wiki.osdev.org/A20_Line
+// NOTE
+//   All methods talking about A20 line are listed here
+//       http://wiki.osdev.org/A20_Line
 
 .file "a20.asm"
 enablea20:
-    # Check if it's already enabled on boot.
+    // Check if it's already enabled on boot.
     call check_a20
     cmpw $1, %ax
     jne 1f
@@ -39,7 +39,7 @@ activatea20failed:
     ret
 
 
-# Check if wraparound is happening, and hence if the A20 line is disabled.
+// Check if wraparound is happening, and hence if the A20 line is disabled.
 check_a20:
     pushf
     pushw %ds
@@ -58,10 +58,10 @@ check_a20:
     movw $0x0500, %di
     movw $0x0510, %si
 
-    # Here [es:di] and [ds:si] address 0000:0500 and ffff:0510 which are
-    # positions 000500 and 100500 respectively.
-    # If wraparound is happening, then these values will address the same byte,
-    # otherwise they will address different bytes (that may be the same value).
+    // Here [es:di] and [ds:si] address 0000:0500 and ffff:0510 which are
+    // positions 000500 and 100500 respectively.
+    // If wraparound is happening, then these values will address the same byte,
+    // otherwise they will address different bytes (that may be the same value).
 
     movb %es:(%di), %al
     pushw %ax
@@ -69,24 +69,24 @@ check_a20:
     movb %ds:(%si), %al
     pushw %ax
 
-    # Now on the stack we have  0xff<byte stored at 0000:0500>
-    #       and                 0xff<byte stored at ffff:0510>
-    # n.b. this is just so that we can write the correct values back after
-    # we've done checking for wraparound.
+    // Now on the stack we have  0xff<byte stored at 0000:0500>
+    //       and                 0xff<byte stored at ffff:0510>
+    // n.b. this is just so that we can write the correct values back after
+    // we've done checking for wraparound.
 
     movb $0x00, %es:(%di)
     movb $0xff, %ds:(%si)
 
-    # We have written different values under each addressing mechanism.
-    # If wraparound is enabled, then both writes will be to the same place, and
-    # hence the second one will have overwritten the first.
-    # Otherwise they will have written to different places, and when reading
-    # [es:di] we'll get the 0x00.
+    // We have written different values under each addressing mechanism.
+    // If wraparound is enabled, then both writes will be to the same place, and
+    // hence the second one will have overwritten the first.
+    // Otherwise they will have written to different places, and when reading
+    // [es:di] we'll get the 0x00.
 
     cmpb $0xff, %es:(%di)
 
-    # Before checking the condition flags, we put those memory locations back
-    # to how they were.
+    // Before checking the condition flags, we put those memory locations back
+    // to how they were.
     popw %ax
     movb %al, %ds:(%si)
 
@@ -95,7 +95,7 @@ check_a20:
 
     movw $0, %ax
 
-    # Check the condition flags here.
+    // Check the condition flags here.
     je check_a20_exit
 
     movw $1, %ax
@@ -107,8 +107,8 @@ check_a20_exit:
     popw %ds
     popf
 
-    # # Test instruction so I can check my loops work in virtual machines.
-    # movw $0, %ax
+    // // Test instruction so I can check my loops work in virtual machines.
+    // movw $0, %ax
     ret
 
 
@@ -126,35 +126,35 @@ keyboarda20enable:
     cli
 
     call a20wait
-    # Disable keyboard, see 
-    # http://wiki.osdev.org/%228042%22_PS/2_Controller#Command_Register
+    // Disable keyboard, see 
+    // http://wiki.osdev.org/%228042%22_PS/2_Controller#Command_Register
     movb $0xad, %al
     outb %al, $0x64
 
     call a20wait
-    # Read Controller output port (see link above)
+    // Read Controller output port (see link above)
     movb $0xd0, %al
     outb %al, $0x64
 
     call a20wait2
-    # Get data from keyboard (return from the above command)
+    // Get data from keyboard (return from the above command)
     inb $0x60, %al
     pushl %eax
 
     call a20wait
-    # Write next byte to controller output port.
+    // Write next byte to controller output port.
     movb $0xd1, %al
     outb %al, $0x64
 
     call a20wait
-    # Send the previous settings, along with the request to enable a20
-    # http://wiki.osdev.org/%228042%22_PS/2_Controller#PS.2F2_Controller_Output_Port
+    // Send the previous settings, along with the request to enable a20
+    // http://wiki.osdev.org/%228042%22_PS/2_Controller#PS.2F2_Controller_Output_Port
     popl %eax
     orb $2, %al
     outb %al, $0x60
 
     call a20wait
-    # Enable the keyboard again.
+    // Enable the keyboard again.
     movb $0xae, %al
     outb %al, $0x64
 
@@ -163,22 +163,22 @@ keyboarda20enable:
     ret
 
 a20wait:
-    # Reading from the keyboard status register.
+    // Reading from the keyboard status register.
     inb $0x64, %al
-    # from http://wiki.osdev.org/%228042%22_PS/2_Controller#Status_Register ,
-    # bit 1 marks whether the input buffer is full or not.
-    # We have to wait until it's clear before either sending a command to port
-    # 0x64 or sending data to port 0x60.
+    // from http://wiki.osdev.org/%228042%22_PS/2_Controller#Status_Register ,
+    // bit 1 marks whether the input buffer is full or not.
+    // We have to wait until it's clear before either sending a command to port
+    // 0x64 or sending data to port 0x60.
     testb $2, %al
     jnz a20wait
     ret
 
 a20wait2:
     inb $0x64, %al
-    # From http://wiki.osdev.org/%228042%22_PS/2_Controller#Status_Register ,
-    # bit 0 marks whether the output buffer has data or not.
-    # We wait until the output buffer has data before attempting to read from
-    # it.
+    // From http://wiki.osdev.org/%228042%22_PS/2_Controller#Status_Register ,
+    // bit 0 marks whether the output buffer has data or not.
+    // We wait until the output buffer has data before attempting to read from
+    // it.
     testb $1, %al
     jz a20wait2
     ret
@@ -186,17 +186,17 @@ a20wait2:
 
 biosa20enable:
     pushw %cx
-    # vimcmd: e +3128 saved_docs/BIOSinterrupts/INTERRUP.C
-    # Check if the BIOS has A20 gate support
+    // vimcmd: e +3128 saved_docs/BIOSinterrupts/INTERRUP.C
+    // Check if the BIOS has A20 gate support
     movw $0x2403, %ax
     int  $0x15
     jb 5f
     cmpb $0, %ah
     jnz 5f
     
-    # Check if A20 is already set (shouldn't be calling this function if it's
-    # already set, but worth it anyway in case I use the function differently
-    # in the future).
+    // Check if A20 is already set (shouldn't be calling this function if it's
+    // already set, but worth it anyway in case I use the function differently
+    // in the future).
     movw $0x2402, %ax
     int  $0x15
     jb 4f
@@ -206,7 +206,7 @@ biosa20enable:
     cmpb 1, %al
     jz 1f
 
-    # Attempt to activate the A20 gate.
+    // Attempt to activate the A20 gate.
     movw $0x2401, %ax
     int  $0x15
     jb 4f
@@ -229,8 +229,8 @@ datastart
 faileda20:  .asciz "... something went wrong "
 
 a20attempts:
-    # The below is the recommended order to attempt turning on a20, the
-    # uncommented order is just for trying things out.
+    // The below is the recommended order to attempt turning on a20, the
+    // uncommented order is just for trying things out.
     .word biosa20, biosa20enable
     .word keyboarda20, keyboarda20enable
     .word fasta20, fasta20enable

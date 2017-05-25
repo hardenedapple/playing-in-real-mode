@@ -1,22 +1,22 @@
 .file "printing.asm"
 
-# Clear entire screen.
-# Also ensure direction flag is set correctly.
+// Clear entire screen.
+// Also ensure direction flag is set correctly.
 clearScreen:
     movw $0x3, %ax
     int $0x10
     cld
     ret
 
-# Argument passed via %si
-# Assumes direction flag is cleared.
-#   Don't know if this would affect any registers or not.
-#   To be on the safe side, I'm storing the %cx register on the stack (because
-#   that's a register I need to be constant over calling this function).
-#   I'll check later to see if my machine changes that register or not.
-# Caller must ensure everything is saved.
-# Taken from my GRUB mbr (from reading the disassembly), I had a less-neat
-# version.
+// Argument passed via %si
+// Assumes direction flag is cleared.
+//   Don't know if this would affect any registers or not.
+//   To be on the safe side, I'm storing the %cx register on the stack (because
+//   that's a register I need to be constant over calling this function).
+//   I'll check later to see if my machine changes that register or not.
+// Caller must ensure everything is saved.
+// Taken from my GRUB mbr (from reading the disassembly), I had a less-neat
+// version.
 1:
     movw $0x1, %bx
     movb $0xe, %ah
@@ -37,8 +37,8 @@ newline:
     ret
 
 printReg:
-    # Argument to this function -- %al marks whether to terminate with a
-    # newline.
+    // Argument to this function -- %al marks whether to terminate with a
+    // newline.
     cmpb $0, %al
     je 1f
     movb $0xa, %al
@@ -52,8 +52,8 @@ hexloop:
     rolw $4, %ax
     movw %ax, %bx
     andw $0x0f, %bx
-    # Cheating a little here, the index is in the base register while the
-    # string position is in the source register.
+    // Cheating a little here, the index is in the base register while the
+    // string position is in the source register.
     movb (%bx, %si), %bl
     movb %bl, (%di)
     incw %di
@@ -67,7 +67,7 @@ printDWORD:
     movw $1, %cx
     jmp 1f
 printQWORD:
-    # Address of qword is in %ax
+    // Address of qword is in %ax
     movw %ax, storedaddr
     movw $3, %cx
 1:
@@ -82,7 +82,7 @@ printQWORD:
     call printReg
     popw %cx
     loop 1b
-    # Finish, have a new line and return.
+    // Finish, have a new line and return.
 printQWORDfin:
     movw storedaddr, %si
     movw (%si), %ax
