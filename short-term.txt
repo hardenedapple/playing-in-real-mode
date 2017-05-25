@@ -1,21 +1,5 @@
 Small list of rolling targets.
 
-Account for the maximum number of blocks when reading from hard-drive
-    Have to loop until we have as much as we want.
-    While looping will need to increment transferBuffer.
-    May as count based on how many blocks were actually transferred, which will
-    provide proper handling code for the assertion at the end of the function.
-
-Read the vmlinuz-linux real-mode stuff into memory.
-    Take the same method as http://sebastian-plotz.blogspot.co.uk/ does to find
-    the first LBA block of the file and hard-code it into the mbr.
-
-Parse the Linux boot header
-    Find from http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt
-
-Find the vmlinuz-linux file on the first partition.
-    This will require some understanding of the ext\d filesystem.
-
 Boot Linux directly from my bootloader, without using GRUB at all.
     These websites that might help figure out exactly what to do.
     http://duartes.org/gustavo/blog/post/kernel-boot-process/
@@ -57,6 +41,9 @@ Boot Linux directly from my bootloader, without using GRUB at all.
         sector.
         Check that the partition is ext\d (TODO -- find out how)
         Use knowledge of the filesystem to find vmlinuz
+
+Find the vmlinuz-linux file on the first partition instead of hard-coding it.
+    This will require some understanding of the ext\d filesystem.
 
 UI
     All I want in terms of UI is to have two descriptions ("boot linux", and
