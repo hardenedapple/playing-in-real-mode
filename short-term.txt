@@ -1,5 +1,26 @@
 Small list of rolling targets.
 
+Currently not booting, and failing with the following message:
+    Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
+
+    Pages found with a similar problem
+        https://wiki.gentoo.org/wiki/Knowledge_Base:Unable_to_mount_root_fs
+            Talks about ensuring the correct root=... option.
+            I tried the sebastian-minimal-linux-bootloader.asm bootloader
+            with command lines including
+            'root=/dev/sda1',
+            'root=/dev/sda2',
+            'root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4'
+                (taken from GRUB command line)
+            and 'auto' with & without either of the 'root' options above.
+            None of these change the error message I'm getting.
+
+    Things I can do to get more information
+        Video screen and rewatch look for hard-to-see error messages.
+        Step through the function that errors using bochs.
+            Find the memory address to break at from the backtrace.
+
+
 Boot Linux directly from my bootloader, without using GRUB at all.
     These websites that might help figure out exactly what to do.
     http://duartes.org/gustavo/blog/post/kernel-boot-process/

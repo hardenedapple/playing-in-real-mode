@@ -124,8 +124,6 @@ diskPacket:
     // transfer buffer.
     // extendedtransferBuffer: .quad 0
 
-successMsg: .asciz "YAY"
-
 
 // At position 446 into file ( 0x1be ) is the partition table.
 // I don't think I need to have that correct.
@@ -202,6 +200,7 @@ secondStage_start:
     movw %ax, availSpace
 
     call readLinux
+    printString($msgGetSet)
 
     // Following the below vimcmd: e +965 Linux_Documentation_x86_boot.txt
     xorw %ax, %ax
@@ -226,7 +225,7 @@ secondStage_start:
     ljmp $0x880, $0
 
     // call getready
-    printString($successMsg)
+    printString($msgShouldNotReach)
     jmp .
 
 findLinux:
@@ -401,9 +400,6 @@ readLinux:
     // init_size -- doesn't seem to be needed.
     // handover_offset -- for EFI, can ignore.
 
-    // TODO Implement read32bitLinux
-    // Work with syssize.  0x1f4/4 defines number of 16-byte paragraphs for the
-    // protected-mode code.
     call read32bitLinux
 
     // Put the command line in the correct place.
@@ -480,16 +476,22 @@ read32bitLinux:
     movw %ax, transferBuffer
     movw %ax, moveGDTsource
 
+    // Find where we need to load from -- vmlinuz_block + linuxSetupSectors
+    // vimcmd: e +897 Linux_Documentation_x86_boot.txt
+    xorl %eax, %eax
+    movb linuxSetupSectors, %al
+    addl vmlinuz_block, %eax
+    movl %eax, startBlock
+
     // Ensure es is zero for this loop
     movw $0, %ax
     movw %ax, %es
     // Loop
 read32:
     //   Read 0x7f sectors from the hard-drive into transferBuffer
-    movw $0x7f, %ax
-    movw %ax, numBlocks
+    movw $0x7f, numBlocks
     call readFromHardDrive
-    //   Move 0x7f sectors (0x7f00 words) from transferBuffer to 0x100000
+    //   Move 0x7f sectors (127 * 512 / 2 = 0x7f00 words) from transferBuffer to 0x100000
     movb $0x87, %ah
     movw $0x7f00, %cx
     movw $gdtForMove, %si
@@ -498,9 +500,13 @@ read32:
     BADREG(%ax, msgCopyError)
     jmp .
 1:
-    // Add 0x7f00 to the destination address (for the next packet)
-    addw $0x7f00, moveGDTdest
+    // Add 0xfe00 to the destination address (for the next packet)
+    // 127 * 512 bytes copied
+    addw $0xfe00, moveGDTdest
     adcb $0, moveGDTdest + 2
+
+    // Add 0x7f to the block we need to read from.
+    addl $0x7f, startBlock
 
     //   subtract 0x7f from protectedSegments
     subw $0x7f, protectedSegments
@@ -532,6 +538,8 @@ msgTooMuchProtected: .asciz "too much protected kernel to read"
 msgCopyError: .asciz "interrupt failure moving protected mode bytes"
 msgHandleLargerAddresses: .asciz "Load address too high for 16 bit value"
 msgNeedReadPartial: .asciz "Can't use 0x7f block size reads"
+msgShouldNotReach: .asciz "Should not reach this position"
+msgGetSet: .asciz "Ready ... Set ... Go!!!\n\r"
 
 readAddr: .word 0
 moveAddr: .long 0
@@ -565,7 +573,7 @@ moveGDTdest:
 
 // TODO Allow user to choose command line.
 // linuxCmdLine: .asciz "root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro  quiet"
-linuxCmdLine: .asciz "auto"
+linuxCmdLine: .asciz "auto debug"
 linuxCmdLineSize = . - linuxCmdLine
 .align 512
 secondStage_end:
