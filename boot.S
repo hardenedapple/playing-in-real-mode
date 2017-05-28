@@ -496,7 +496,7 @@ read32bitLinux:
     ERRMSG(msgTooMuchProtected)
     jmp .
 1:
-    movw %ax, protectedSegments
+    movw %ax, numSegments
 
     // Find how much space we can use at a time to load the protected mode code.
     xorw %ax, %ax
@@ -513,7 +513,6 @@ read32bitLinux:
     imulw $0x200, %ax
     addw $secondStage_end, %ax
     movw %ax, transferBuffer
-    movw %ax, moveGDTsource
 
     // Find where we need to load from -- vmlinuz_block + linuxSetupSectors
     // vimcmd: e +897 Linux_Documentation_x86_boot.txt
@@ -522,18 +521,26 @@ read32bitLinux:
     addl vmlinuz_block, %eax
     movl %eax, startBlock
 
-    // Ensure es is zero for this loop
+    call readAndMove
+    ret
+
+readAndMove:
+    // Called with the following setup
+    // transferBuffer   temporary load area containing at least 0x7f sectors
+    // startBlock       first block (LBA) to read from.
+    // numSegments      number of segments to read (and move).
+    // moveGDTdest      final destination address of data
+    movw transferBuffer, %ax
+    movw %ax, moveGDTsource
     movw $0, %ax
     movw %ax, %es
-    // Loop
-read32:
-    //   Read 0x7f sectors from the hard-drive into transferBuffer
+readandMoveLoop:
     movw $0x7f, numBlocks
     call readFromHardDrive
-    //   Move 0x7f sectors (127 * 512 / 2 = 0x7f00 words) from transferBuffer to 0x100000
-    movb $0x87, %ah
+    //   Move 0x7f sectors (127 * 512 / 2 = 0x7f00 words) from transferBuffer to moveGDTdest
     movw $0x7f00, %cx
     movw $gdtForMove, %si
+    movb $0x87, %ah
     int $0x15
     jae 1f
     BADREG(%ax, msgCopyError)
@@ -543,17 +550,13 @@ read32:
     // 127 * 512 bytes copied
     addw $0xfe00, moveGDTdest
     adcb $0, moveGDTdest + 2
-
     // Add 0x7f to the block we need to read from.
     addl $0x7f, startBlock
-
-    //   subtract 0x7f from protectedSegments
-    subw $0x7f, protectedSegments
-
-    //   if protectedSegments is still positive, GOTO Loop
-    ja read32
+    //   subtract 0x7f from numSegments
+    subw $0x7f, numSegments
+    //   if numSegments is still positive, GOTO Loop
+    ja readandMoveLoop
     ret
-
 
 
 #include "a20.asm"
@@ -582,7 +585,7 @@ msgGetSet: .asciz "Ready ... Set ... Go!!!\n\r"
 
 readAddr: .word 0
 moveAddr: .long 0
-protectedSegments: .word 0
+numSegments: .word 0
 availTempSpace: .word 0
 
 // vimcmd: e +5602 saved_docs/BIOSinterrupts/INTERRUP.C
