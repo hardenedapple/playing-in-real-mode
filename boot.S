@@ -439,6 +439,22 @@ readLinux:
     // init_size -- doesn't seem to be needed.
     // handover_offset -- for EFI, can ignore.
 
+    // Find how much space we can use at a time to load in code that has to be
+    // moved afterwards.
+    xorw %ax, %ax
+    movb linuxSetupSectors, %al
+    movw availSpace, %bx
+    subw %ax, %bx
+    cmpw $0x7f, %bx
+    jae 1f
+    BADREG(%ax, msgNeedReadPartial)
+    jmp .
+1:
+    // Record the position we can load into without overwriting anything.
+    imulw $0x200, %ax
+    addw $secondStage_end, %ax
+    movw %ax, transferBuffer
+
     call read32bitLinux
 
     // Put the command line in the correct place.
@@ -497,22 +513,6 @@ read32bitLinux:
     jmp .
 1:
     movw %ax, numSegments
-
-    // Find how much space we can use at a time to load the protected mode code.
-    xorw %ax, %ax
-    movb linuxSetupSectors, %al
-    movw availSpace, %bx
-    subw %ax, %bx
-    cmpw $0x7f, %bx
-    jae 1f
-    BADREG(%ax, msgNeedReadPartial)
-    jmp .
-1:
-
-    // Record the position we can load into without overwriting anything.
-    imulw $0x200, %ax
-    addw $secondStage_end, %ax
-    movw %ax, transferBuffer
 
     // Find where we need to load from -- vmlinuz_block + linuxSetupSectors
     // vimcmd: e +897 Linux_Documentation_x86_boot.txt
