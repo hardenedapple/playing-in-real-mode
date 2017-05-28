@@ -63,7 +63,7 @@ _start:
     //   0xc0000 32768 bytes of Video BIOS
     //   0xc8000 163840 bytes of Memory Mapped I/O
     //   0xf0000 65536 bytes of BIOS.
-    #
+    //
     // 0x9fc00 - 0x100000 is reserved by the BIOS (as is below 0x500)
 
     // Put the stack pointer at the top of memory.
@@ -171,6 +171,45 @@ secondStage_end_addr = (secondStage_end - _bootsector + 0x7c00)
 secondStage_end_sector = secondStage_end_addr / 0x200
 secondStage_end_segment = secondStage_end_addr / 0x10
 
+#define setup_sects           secondStage_end + 0x1f1
+#define root_flags            secondStage_end + 0x1f2
+#define syssize               secondStage_end + 0x1f4
+#define ram_size              secondStage_end + 0x1f8
+#define vid_mode              secondStage_end + 0x1fa
+#define root_dev              secondStage_end + 0x1fc
+#define boot_flag             secondStage_end + 0x1fe
+#define jump                  secondStage_end + 0x200
+#define header                secondStage_end + 0x202
+#define version               secondStage_end + 0x206
+#define realmode_swtch        secondStage_end + 0x208
+#define start_sys_seg         secondStage_end + 0x20c
+#define kernel_version        secondStage_end + 0x20e
+#define type_of_loader        secondStage_end + 0x210
+#define loadflags             secondStage_end + 0x211
+#define setup_move_size       secondStage_end + 0x212
+#define code32_start          secondStage_end + 0x214
+#define ramdisk_image         secondStage_end + 0x218
+#define ramdisk_size          secondStage_end + 0x21c
+#define bootsect_kludge       secondStage_end + 0x220
+#define heap_end_ptr          secondStage_end + 0x224
+#define ext_loader_ver        secondStage_end + 0x226
+#define ext_loader_type       secondStage_end + 0x227
+#define cmd_line_ptr          secondStage_end + 0x228
+#define initrd_addr_max       secondStage_end + 0x22c
+#define kernel_alignment      secondStage_end + 0x230
+#define relocatable_kernel    secondStage_end + 0x234
+#define min_alignment         secondStage_end + 0x235
+#define xloadflags            secondStage_end + 0x236
+#define cmdline_size          secondStage_end + 0x238
+#define hardware_subarch      secondStage_end + 0x23c
+#define hardware_subarch_data secondStage_end + 0x240
+#define payload_offset        secondStage_end + 0x248
+#define payload_length        secondStage_end + 0x24c
+#define setup_data            secondStage_end + 0x250
+#define pref_address          secondStage_end + 0x258
+#define init_size             secondStage_end + 0x260
+#define handover_offset       secondStage_end + 0x264
+
 #define HEAP_SEGMENTS 0x40
 secondStage_start:
     // call enablea20
@@ -247,7 +286,7 @@ readLinux:
     movl vmlinuz_block, %eax
     movl %eax, startBlock
     call readFromHardDrive
-    movl (secondStage_end + 0x202), %eax
+    movl (header), %eax
     // This checks for the magic signature telling us the Linux boot segment is
     // not too old it is the magic number "HdrS".
     cmpl $0x53726448, %eax
@@ -257,7 +296,7 @@ readLinux:
 1:
     // Check the protocol is greater than 2.04 (if not, that means the 'syssize'
     // member of the info flags isn't reliable, I don't account for that).
-    movw (secondStage_end + 0x206), %ax
+    movw (version), %ax
     cmpw $0x204, %ax
     jae 1f
     BADREG(%ax, msgBadVersion)
@@ -265,7 +304,7 @@ readLinux:
     // Read how many setup sectors we have to read underneath the memory
     // barrier.
     xorl %eax, %eax
-    movb (secondStage_end + 0x1f1), %al
+    movb (setup_sects), %al
     // If field is zero, real value is 4 http://lxr.linux.no/linux+*/Documentation/x86/boot.txt#L243
     cmpb $0, %al
     jne 1f
@@ -304,12 +343,12 @@ readLinux:
     //                   all was fine.
 
     // type_of_loader -- obligatory byte, I use unregistered.
-    movb $0xff, secondStage_end + 0x210
+    movb $0xff, type_of_loader
 
     // loadflags
     //   Bit 0 defines whether we should load protected-mode code at 0x10000 or
     //   at 0x100000, I know this is set on my test kernel.
-    movb secondStage_end + 0x211, %al
+    movb loadflags, %al
     //   Bit 1 i used internally to decide whether to use KASLR -- we can't do
     //   anything about it.
 
@@ -324,7 +363,7 @@ readLinux:
     //   Bit 7 indicates that the value stored in heap_end_ptr is valid and
     //   hence that the kernel can use the head.
     orb $(1 << 7), %al
-    movb %al, secondStage_end + 0x211
+    movb %al, loadflags
     testb $0x1, %al
     movl $0x10000, %eax
     jz 1f
@@ -339,14 +378,14 @@ readLinux:
 
     // ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
     //                   leave at zero if no initial ramdisk.
-    movl secondStage_end + 0x218, %eax
+    movl ramdisk_image, %eax
     cmpl $0, %eax
     je 1f
     BADREG(%ax, msgRamdiskNotZero)
 1:
     // ramdisk_size -- size of initial ramdisk or ramfs
     //                   leave at zero if no initial ramdisk.
-    movl secondStage_end + 0x21c, %eax
+    movl ramdisk_size, %eax
     cmpl $0, %eax
     je 1f
     BADREG(%ax, msgRamdiskSizeNotZero)
@@ -358,7 +397,7 @@ readLinux:
     // ext_loader_type -- don't need to write
 
     // cmdline_size -- Check our command line isn't too large.
-    movl secondStage_end + 0x238, %eax
+    movl cmdline_size, %eax
     cmpl $linuxCmdLineSize, %eax
     jae 1f
     BADREG(%ax, msgCMDtooLong)
@@ -371,7 +410,7 @@ readLinux:
     // Plus heap space minus 0x200
     addw $(HEAP_SEGMENTS - 1), %ax
     imulw $0x200, %ax
-    movw %ax, secondStage_end + 0x224
+    movw %ax, heap_end_ptr
 
     // initrd_addr_max -- read to do with ramdisk -- don't need
     // kernel_alignment -- Don't bother with this as not relocating the kernel.
@@ -418,7 +457,7 @@ readLinux:
     // Store the cmd_line_ptr in the Linux header, put the flat 32 bit address
     // into %eax.
     imull $0x10, %eax
-    movl %eax, secondStage_end + 0x228
+    movl %eax, cmd_line_ptr
     movw $0, %di
     movw $linuxCmdLine, %si
     movw $linuxCmdLineSize, %cx
@@ -442,7 +481,7 @@ read32bitLinux:
     // interrupt -- see readFromHardDrive).
     // Double check that 0x7f is less than availSpace - linuxSetupSectors
 
-    movl secondStage_end + 0x1f4, %eax
+    movl syssize, %eax
     movl $0, %edx
     movl $(0x200 / 0x10), %ebx
     divl %ebx
