@@ -212,8 +212,8 @@ secondStage_end_segment = secondStage_end_addr / 0x10
 
 #define HEAP_SEGMENTS 0x40
 secondStage_start:
-    // call enablea20
-    // call newline
+    call enablea20
+    call newline
     // Alternate function to find memory size.
     //   This is mentioned at
     //   http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt#L85
@@ -529,27 +529,41 @@ readAndMove:
     // transferBuffer   temporary load area containing at least 0x7f sectors
     // startBlock       first block (LBA) to read from.
     // numSegments      number of segments to read (and move).
-    // moveGDTdest      final destination address of data
+    // moveDest      final destination address of data
+    //
+    // Always copy 0xfe00 bytes at a time (because that's how much we can read
+    // in at a time, and we round up rather than handle remainders).
     movw transferBuffer, %ax
-    movw %ax, moveGDTsource
-    movw $0, %ax
+    xorw %ax, %ax
     movw %ax, %es
+
+
 readandMoveLoop:
     movw $0x7f, numBlocks
     call readFromHardDrive
-    //   Move 0x7f sectors (127 * 512 / 2 = 0x7f00 words) from transferBuffer to moveGDTdest
-    movw $0x7f00, %cx
-    movw $gdtForMove, %si
-    movb $0x87, %ah
-    int $0x15
+    //   Move 0x7f sectors (127 * 512 / 2 = 0x7f00 words) from transferBuffer to moveDest
+    // Move %ecx double words -- each double word consists of 4 bytes
+    movl $(0xfe00 / 4), %ecx
+    // Move from %ds(%esi) to %es(%edi)
+    // %ds and %es are 0
+    // put source into %esi and dest into %edi
+    cld
+    xorl %esi, %esi
+    movw transferBuffer, %si
+    movl moveDest, %edi
+    rep;
+    movsl
     jae 1f
     BADREG(%ax, msgCopyError)
     jmp .
 1:
     // Add 0xfe00 to the destination address (for the next packet)
     // 127 * 512 bytes copied
-    addw $0xfe00, moveGDTdest
-    adcb $0, moveGDTdest + 2
+    addl $0xfe00, moveDest
+    jnc 1f
+    ERRMSG(msgMoveTooMuch)
+    jmp .
+1:
     // Add 0x7f to the block we need to read from.
     addl $0x7f, startBlock
     //   subtract 0x7f from numSegments
@@ -582,35 +596,23 @@ msgHandleLargerAddresses: .asciz "Load address too high for 16 bit value"
 msgNeedReadPartial: .asciz "Can't use 0x7f block size reads"
 msgShouldNotReach: .asciz "Should not reach this position"
 msgGetSet: .asciz "Ready ... Set ... Go!!!\n\r"
+msgMoveTooMuch: .asciz "Overflow reading & moving data"
 
 readAddr: .word 0
 moveAddr: .long 0
 numSegments: .word 0
 availTempSpace: .word 0
 
-// vimcmd: e +5602 saved_docs/BIOSinterrupts/INTERRUP.C
-gdtForMove:
-    // Space used by BIOS
-    .quad 0, 0
-    // number of bytes to copy, = 2*cx where cx is always 0x7f00
-    .word 0xfe00
-moveGDTsource:
-    .byte 0, 0, 0
-    // access rights
-    .byte 0x93
-	.word	0
+gdtinfo:
+    .word gdt_end - gdt - 1 // last byte in table
+    .long gdt               // start of table
 
-    // Destination part of gdt
-	.word	0xffff
-moveGDTdest:
-    // Start off loading at 0x100000
-    // This will be incremented with use.
-    .byte 0, 0, 0x10
-    // access rights
-    .byte 0x93
-    .word 0
-    // Space used by BIOS
-    .quad 0, 0
+gdt:        .long 0, 0  // entry 0 is always unused.
+flatdesc:   .byte 0xff, 0xff, 0, 0, 0, 0b10010010, 0b1001111, 0
+gdt_end:
+
+moveDest: .long 0x100000
+
 
 
 // TODO Allow user to choose command line.
