@@ -533,30 +533,66 @@ readAndMove:
     //
     // Always copy 0xfe00 bytes at a time (because that's how much we can read
     // in at a time, and we round up rather than handle remainders).
+    xorl %eax, %eax
     movw transferBuffer, %ax
+    movw $datadesc, %bx
+    call setDescriptorBase
     xorw %ax, %ax
     movw %ax, %es
-
 
 readandMoveLoop:
     movw $0x7f, numBlocks
     call readFromHardDrive
-    //   Move 0x7f sectors (127 * 512 / 2 = 0x7f00 words) from transferBuffer to moveDest
-    // Move %ecx double words -- each double word consists of 4 bytes
-    movl $(0xfe00 / 4), %ecx
-    // Move from %ds(%esi) to %es(%edi)
-    // %ds and %es are 0
-    // put source into %esi and dest into %edi
-    cld
-    xorl %esi, %esi
-    movw transferBuffer, %si
-    movl moveDest, %edi
-    rep;
-    movsl
-    jae 1f
-    BADREG(%ax, msgCopyError)
-    jmp .
-1:
+
+    // Set the segment we'll use for the extended segment register.
+    // This will have the base address of a moveDest
+    movl moveDest, %eax
+    movw $extradesc, %bx
+    call setDescriptorBase
+
+    //      Disallow interrupts -- we'll be in protected mode, but without an
+    //      IDT table, better safe than sorry.
+    cli
+        //      Save real mode segments
+        push %ds
+        push %es
+
+        // Turn on protected-mode
+        lgdt gdtinfo
+        movl %cr0, %eax
+        orb  $1, %al
+        movl %eax, %cr0
+
+        // Set the data segment and extended segment to a nice flat descriptor.
+        // TODO See if I actually need to set the data segment -- all bytes in the
+        // source can be addressed with 16 bit registers.
+        movw $0x08, %bx
+        movw %bx, %ds
+        // Use extradesc for the extended segment.
+        shlw $1, %bx
+        movw %bx, %es
+
+        // Move 0x7f sectors (127 * 512 / 2 = 0x7f00 words) from transferBuffer to moveDest
+        // Move %ecx double words -- each double word consists of 4 bytes
+        movl $0xfe00, %ecx
+        xorl %esi, %esi
+        xorl %edi, %edi
+        // ds:si == transferBuffer:0
+        // es:di == moveDest:0
+        // cx == num double words.
+        rep;
+        movsb
+
+        // Reset back to realmode
+        andb $0xfe, %al
+        movl %eax, %cr0
+        // Get back old segments
+        pop %ds
+        pop %es
+
+    // Turn interrupts back on
+    sti
+
     // Add 0xfe00 to the destination address (for the next packet)
     // 127 * 512 bytes copied
     addl $0xfe00, moveDest
@@ -570,6 +606,15 @@ readandMoveLoop:
     subw $0x7f, numSegments
     //   if numSegments is still positive, GOTO Loop
     ja readandMoveLoop
+    ret
+
+setDescriptorBase:
+    // Given a base address in %eax, and a descriptor offset in %bx, set the
+    // base address of the descriptor to the address specified in %eax.
+    movw %ax, 2(%bx)
+    shrl $0x10, %eax
+    movb %al, 4(%bx)
+    movb %ah, 7(%bx)
     ret
 
 
@@ -608,7 +653,8 @@ gdtinfo:
     .long gdt               // start of table
 
 gdt:        .long 0, 0  // entry 0 is always unused.
-flatdesc:   .byte 0xff, 0xff, 0, 0, 0, 0b10010010, 0b1001111, 0
+datadesc:   .byte 0xff, 0xff, 0, 0, 0, 0b10010011, 0b1001111, 0
+extradesc:    .byte 0xff, 0xff, 0, 0, 0, 0b10010011, 0b1001111, 0
 gdt_end:
 
 moveDest: .long 0x100000
