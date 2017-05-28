@@ -376,6 +376,8 @@ readLinux:
     // code32_start -- optional, either bootloader hook or loading at
     //                 nonstandard address.
 
+    // NOTE We will set these in readInitrd, but for now we just check that
+    // they are both 0 by default.
     // ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
     //                   leave at zero if no initial ramdisk.
     movl ramdisk_image, %eax
@@ -412,7 +414,6 @@ readLinux:
     imulw $0x200, %ax
     movw %ax, heap_end_ptr
 
-    // initrd_addr_max -- read to do with ramdisk -- don't need
     // kernel_alignment -- Don't bother with this as not relocating the kernel.
     // relocatable_kernel -- Don't bother with this as not relocating the kernel.
     // min_alignment -- Don't bother with this as not relocating the kernel.
@@ -456,6 +457,7 @@ readLinux:
     movw %ax, transferBuffer
 
     call read32bitLinux
+    call readInitrd
 
     // Put the command line in the correct place.
     // This has to be done after reading in the protected mode kernel code
@@ -524,6 +526,60 @@ read32bitLinux:
     call readAndMove
     ret
 
+setInitRdFlags:
+    // initrd_addr_max -- Maximum address that the ramdisk can use.
+    movl initrd_addr_max, %eax
+    // Compare initrd_addr_max to initrdLoadAddr + length of first
+    movl initrdFirstLength, %ebx
+    addl initrdSecondLength, %ebx
+    imull $0x200, %ebx
+    jno 1f
+    ERRMSG(msgInitrdOverflowAddr)
+    jmp .
+1:
+    addl initrdLoadAddr, %ebx
+    cmpl %ebx, %eax 
+    ja 1f
+    ERRMSG(msgInitrdLowAddr)
+    jmp .
+1:
+    xorl %edx, %edx
+    movl initrdFirstLength, %eax
+    addl initrdSecondBlock, %eax
+    imull $0x200, %eax
+    jno 1f
+    ERRMSG(msgInitrdTooLarge)
+1:
+    // ramdisk_size -- size of initial ramdisk or ramfs
+    movl %eax, ramdisk_size
+    // ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
+    //                   leave at zero if no initial ramdisk.
+    movl initrdLoadAddr, %eax
+    movl %eax, ramdisk_image
+    ret
+
+readInitrd:
+    // transfer buffer is already set before calling this function.
+    xorw %ax, %ax
+    // moveDest currently points to the end of the kernel.
+    movl moveDest, %eax
+    movl %eax, initrdLoadAddr
+    call setInitRdFlags
+
+    movl initrdFirstBlock, %eax
+    movl %eax, startBlock
+    movl initrdFirstLength, %eax
+    movl %eax, numSegments
+    call readAndMove
+
+    // moveDest is incremented in the above function
+    movl initrdSecondBlock, %eax
+    movl %eax, startBlock
+    movl initrdSecondLength, %eax
+    movl %eax, numSegments
+    call readAndMove
+    ret
+    
 readAndMove:
     // Called with the following setup
     // transferBuffer   temporary load area containing at least 0x7f sectors
@@ -641,12 +697,25 @@ msgHandleLargerAddresses: .asciz "Load address too high for 16 bit value"
 msgNeedReadPartial: .asciz "Can't use 0x7f block size reads"
 msgShouldNotReach: .asciz "Should not reach this position"
 msgGetSet: .asciz "Ready ... Set ... Go!!!\n\r"
+msgInitrdOverflowAddr: .asciz "Guessed load address of initrd overflows"
+msgInitrdLowAddr: .asciz "Guessed load address of initrd is too high"
+msgInitrdTooLarge: .asciz "Overflow calculating initrd size"
 msgMoveTooMuch: .asciz "Overflow reading & moving data"
 
 readAddr: .word 0
 moveAddr: .long 0
 numSegments: .word 0
 availTempSpace: .word 0
+
+// For now hard-code initrd load address, in the future should calculate from
+// the initrd_addr_max value, and the max memory address of the kernel.
+// NOTE: This was manually taken from 
+//      sudo hdparm --fibmap /mnt/usb/boot/initrd.img-3.16.0-4-686-pae
+initrdLoadAddr: .long  0 # Set to just after the protected-mode kernel.
+initrdFirstBlock: .long 0x3d0800
+initrdFirstLength: .long 0x4000
+initrdSecondBlock: .long 0x3d4e00
+initrdSecondLength: .long 0x2f18
 
 gdtinfo:
     .word gdt_end - gdt - 1 // last byte in table
@@ -662,8 +731,8 @@ moveDest: .long 0x100000
 
 
 // TODO Allow user to choose command line.
-// linuxCmdLine: .asciz "root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro  quiet"
-linuxCmdLine: .asciz "auto debug"
+linuxCmdLine: .asciz "debug root=/dev/sda1 ro"
+# linuxCmdLine: .asciz "auto debug"
 linuxCmdLineSize = . - linuxCmdLine
 .align 512
 secondStage_end:
