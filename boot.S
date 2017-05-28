@@ -20,6 +20,26 @@
 //  heap_end_ptr = heap_end - 0x200 = 0xc200
 //  cmd_line_ptr = base_ptr + heap_end = 0x8800 + 0x14a00
 
+// n.b. This bootloader can't handle ramdisks.
+//      In order to handle ramdisks, we would need to use protected-mode to
+//      move the data read into reasonable addresses.
+//      This is because our current method of reading into addresses
+//      inaccessable from 16-bit mode (BIOS INT 0x15, AH = 0x87) only takes 24
+//      bit linear addresses, instead of 32 bit addresses.
+//      This is not enough in general, e.g. the ramdisk from the random debian
+//      distribution I found is 28440 sectors long, which is 0xde3000 bytes
+//      long.
+//      We need to load this *after* the kernel (as there isn't enough
+//      contiguous space before it).
+//      The kernel from the random Debian distro that I took is 0x2e3000 bytes
+//      long.
+//      Given that we're putting that at address 0x100000, we have to load at
+//      0x3e3000 or more.
+//      This would put the ramdisk in the range
+//          0x3e3000 - 0x11c6000
+//      The BIOS interrupt can't handle that, as it takes more than 24 bits.
+//
+
 #define datastart .text 1
 #define dataend .text 0
 
@@ -376,20 +396,6 @@ readLinux:
     // code32_start -- optional, either bootloader hook or loading at
     //                 nonstandard address.
 
-    // ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
-    //                   leave at zero if no initial ramdisk.
-    movl ramdisk_image, %eax
-    cmpl $0, %eax
-    je 1f
-    BADREG(%ax, msgRamdiskNotZero)
-1:
-    // ramdisk_size -- size of initial ramdisk or ramfs
-    //                   leave at zero if no initial ramdisk.
-    movl ramdisk_size, %eax
-    cmpl $0, %eax
-    je 1f
-    BADREG(%ax, msgRamdiskSizeNotZero)
-1:
     // bootsect_kludge -- obsolete
     // heap_end_ptr -- handled below
     // ext_loader_ver  -- don't need to write
@@ -412,7 +418,6 @@ readLinux:
     imulw $0x200, %ax
     movw %ax, heap_end_ptr
 
-    // initrd_addr_max -- read to do with ramdisk -- don't need
     // kernel_alignment -- Don't bother with this as not relocating the kernel.
     // relocatable_kernel -- Don't bother with this as not relocating the kernel.
     // min_alignment -- Don't bother with this as not relocating the kernel.
@@ -456,6 +461,7 @@ readLinux:
     movw %ax, transferBuffer
 
     call read32bitLinux
+    call readInitrd
 
     // Put the command line in the correct place.
     // This has to be done after reading in the protected mode kernel code
@@ -524,6 +530,62 @@ read32bitLinux:
     call readAndMove
     ret
 
+setInitRdFlags:
+    // initrd_addr_max -- Maximum address that the ramdisk can use.
+    movl initrd_addr_max, %eax
+    // Compare initrd_addr_max to initrdLoadAddr + length of first
+    movl initrdFirstLength, %ebx
+    addl initrdSecondLength, %ebx
+    imull $0x200, %ebx
+    jno 1f
+    ERRMSG(msgInitrdOverflowAddr)
+    jmp .
+1:
+    addl initrdLoadAddr, %ebx
+    cmpl %ebx, %eax 
+    ja 1f
+    ERRMSG(msgInitrdLowAddr)
+    jmp .
+1:
+    xorl %edx, %edx
+    movl initrdFirstLength, %eax
+    addl initrdSecondBlock, %eax
+    imull $0x200, %eax
+    jno 1f
+    ERRMSG(msgInitrdTooLarge)
+1:
+    // ramdisk_size -- size of initial ramdisk or ramfs
+    movl %eax, ramdisk_size
+    // ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
+    //                   leave at zero if no initial ramdisk.
+    movl $initrdLoadAddr, %eax
+    movl %eax, ramdisk_image
+    ret
+
+readInitrd:
+    // transfer buffer is already set before calling this function.
+    // moveGDTdest currently points to the end of the kernel.
+    xorw %ax, %ax
+    movb moveGDTdest + 2, %al
+    shll $16, %eax
+    movw moveGDTdest, %ax
+    movl %eax, initrdLoadAddr
+    # call setInitRdFlags
+
+    movl initrdFirstBlock, %eax
+    movl %eax, startBlock
+    movl initrdFirstLength, %eax
+    movl %eax, numSegments
+    call readAndMove
+
+    // moveGDTdest is incremented in the above function
+    movl initrdSecondBlock, %eax
+    movl %eax, startBlock
+    movl initrdSecondLength, %eax
+    movl %eax, numSegments
+    call readAndMove
+    ret
+    
 readAndMove:
     // Called with the following setup
     // transferBuffer   temporary load area containing at least 0x7f sectors
@@ -550,6 +612,10 @@ readandMoveLoop:
     // 127 * 512 bytes copied
     addw $0xfe00, moveGDTdest
     adcb $0, moveGDTdest + 2
+    jnc 1f
+    ERRMSG(msgMoveTooMuch)
+    jmp .
+1:
     // Add 0x7f to the block we need to read from.
     addl $0x7f, startBlock
     //   subtract 0x7f from numSegments
@@ -582,11 +648,24 @@ msgHandleLargerAddresses: .asciz "Load address too high for 16 bit value"
 msgNeedReadPartial: .asciz "Can't use 0x7f block size reads"
 msgShouldNotReach: .asciz "Should not reach this position"
 msgGetSet: .asciz "Ready ... Set ... Go!!!\n\r"
+msgInitrdOverflowAddr: .asciz "Guessed load address of initrd overflows"
+msgInitrdLowAddr: .asciz "Guessed load address of initrd is too high"
+msgInitrdTooLarge: .asciz "Overflow calculating initrd size"
+msgMoveTooMuch: .asciz "Overflow reading & moving data"
 
 readAddr: .word 0
 moveAddr: .long 0
 numSegments: .word 0
 availTempSpace: .word 0
+
+// For now hard-code initrd load address, in the future should calculate from
+// the initrd_addr_max value, and the max memory address of the kernel.
+initrdLoadAddr: .long  0 # Set to just after the protected-mode kernel.
+initrdFirstBlock: .long 0x3d0800
+initrdFirstLength: .long 0x4000
+initrdSecondBlock: .long 0x3d4e00
+initrdSecondLength: .long 0x2f18
+
 
 // vimcmd: e +5602 saved_docs/BIOSinterrupts/INTERRUP.C
 gdtForMove:
