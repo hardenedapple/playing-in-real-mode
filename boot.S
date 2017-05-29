@@ -437,7 +437,6 @@ readLinux:
     //   a relocating bootloader should attempt to load at this address.
     //   I'm not a relocating bootloader -- I believe I can ignore this.
 
-    // init_size -- doesn't seem to be needed.
     // handover_offset -- for EFI, can ignore.
 
     // Find how much space we can use at a time to load in code that has to be
@@ -543,6 +542,19 @@ setInitRdFlags:
     ERRMSG(msgInitrdLowAddr)
     jmp .
 1:
+    // init_size -- amount of linear contiguous memory starting at the kernel
+    // runtime start address, that the kernel needs before it's capable of
+    // examining its memory map.
+    // TODO Should calculate the load address given these values.
+    movl init_size, %eax
+    addl protectedLoadAddr, %eax
+    movl initrdLoadAddr, %ebx
+    cmpl %eax, %ebx
+    ja 1f
+    ERRMSG(msgNotEnoughSpare)
+    jmp .
+1:
+
     // ramdisk_size -- size of initial ramdisk or ramfs
     // Can't know this without parsing the filesystem information.
     // I got this number from `wc -c`
@@ -552,14 +564,16 @@ setInitRdFlags:
     //                   leave at zero if no initial ramdisk.
     movl initrdLoadAddr, %eax
     movl %eax, ramdisk_image
+
     ret
 
 readInitrd:
     // transfer buffer is already set before calling this function.
     xorw %ax, %ax
     // moveDest currently points to the end of the kernel.
-    movl moveDest, %eax
-    movl %eax, initrdLoadAddr
+    // Change it to point to where we want the ramdisk loaded.
+    movl initrdLoadAddr, %eax
+    movl %eax, moveDest
     call setInitRdFlags
 
     movl initrdFirstBlock, %eax
@@ -574,7 +588,6 @@ readInitrd:
     addl initrdFirstLengthBytes, %eax
     movl %eax, moveDest
 
-    // moveDest is incremented in the above function
     movl initrdSecondBlock, %eax
     movl %eax, startBlock
     movl initrdSecondLength, %eax
@@ -719,6 +732,7 @@ msgInitrdTooLarge: .asciz "Overflow calculating initrd size"
 msgMoveTooMuch: .asciz "Overflow reading & moving data"
 msgSegmentOverflow: .asciz "Subtracting number of bytes from moveDest overflow"
 msgSegmentProblem: .asciz "Sign set after arithmetic on moveDest"
+msgNotEnoughSpare: .asciz "Not enough space after the kernel."
 
 readAddr: .word 0
 moveAddr: .long 0
@@ -729,7 +743,7 @@ availTempSpace: .word 0
 // the initrd_addr_max value, and the max memory address of the kernel.
 // NOTE: This was manually taken from 
 //      sudo hdparm --fibmap /mnt/usb/boot/initrd.img-3.16.0-4-686-pae
-initrdLoadAddr: .long  0 # Set to just after the protected-mode kernel.
+initrdLoadAddr: .long 0xb00000
 initrdFirstBlock: .long 0x3d0800
 initrdFirstLength: .long 0x4000
 initrdFirstLengthBytes: .long 8388608
@@ -754,7 +768,7 @@ moveDest: .long 0x100000
 
 // TODO Allow user to choose command line.
 linuxCmdLine: .asciz "debug root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro console=ttyS0,115200,8,n"
-# linuxCmdLine: .asciz "auto debug"
+# linuxCmdLine: .asciz "root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 auto debug"
 linuxCmdLineSize = . - linuxCmdLine
 .align 512
 secondStage_end:
