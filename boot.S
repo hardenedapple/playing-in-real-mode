@@ -261,7 +261,7 @@ secondStage_start:
     cli
     // TODO Have hard-coded the position to jump to $(secondStage_end_segment + 0x20)
     // Would be nice to have it calculated.
-    ljmp $0x880, $0
+    ljmp $0x8a0, $0
 
     // call getready
     printString($msgShouldNotReach)
@@ -460,8 +460,8 @@ readLinux:
     call readInitrd
 
     // Put the command line in the correct place.
-    // This has to be done after reading in the protected mode kernel code
-    // to ensure it doesn't get overwritten.
+    // This is done after reading in the protected mode kernel code so we can
+    // not worry about overwriting it while we load in the protected mode code.
     xorl %eax, %eax
     // cmd_line_ptr   -- where we store the linux command line.
     movb linuxSetupSectors, %al
@@ -543,14 +543,10 @@ setInitRdFlags:
     ERRMSG(msgInitrdLowAddr)
     jmp .
 1:
-    xorl %edx, %edx
-    movl initrdFirstLength, %eax
-    addl initrdSecondBlock, %eax
-    imull $0x200, %eax
-    jno 1f
-    ERRMSG(msgInitrdTooLarge)
-1:
     // ramdisk_size -- size of initial ramdisk or ramfs
+    // Can't know this without parsing the filesystem information.
+    // I got this number from `wc -c`
+    movl initrdByteSize, %eax
     movl %eax, ramdisk_size
     // ramdisk_image -- 32 bit linear address of initial ramdisk or ramfs
     //                   leave at zero if no initial ramdisk.
@@ -571,6 +567,12 @@ readInitrd:
     movl initrdFirstLength, %eax
     movl %eax, numSegments
     call readAndMove
+
+    // TODO This shouldn't be necessary, but getting things to work without
+    // hard-coding is harder than with. I'll get round to it later.
+    movl initrdLoadAddr, %eax
+    addl initrdFirstLengthBytes, %eax
+    movl %eax, moveDest
 
     // moveDest is incremented in the above function
     movl initrdSecondBlock, %eax
@@ -662,6 +664,20 @@ readandMoveLoop:
     subw $0x7f, numSegments
     //   if numSegments is still positive, GOTO Loop
     ja readandMoveLoop
+//     For now, we're not handling the fact that we round up.
+//     we're just going to hard-code that to try and get something working, and
+//     then come back to it later.
+//     // numSegments contains minus the number of segments moved more than what
+//     // we were asked to move.
+//     // In order to leave moveDest in the correct position, we multiply by 0x200
+//     // and add that to moveDest.
+//     xorl %eax, %eax
+//     movswl numSegments, %eax
+//     imull $0x200, %eax
+//     addl %eax, moveDest
+//     jns 1f
+//     BADREG(%ax, msgSegmentProblem)
+// 1:
     ret
 
 setDescriptorBase:
@@ -701,6 +717,8 @@ msgInitrdOverflowAddr: .asciz "Guessed load address of initrd overflows"
 msgInitrdLowAddr: .asciz "Guessed load address of initrd is too high"
 msgInitrdTooLarge: .asciz "Overflow calculating initrd size"
 msgMoveTooMuch: .asciz "Overflow reading & moving data"
+msgSegmentOverflow: .asciz "Subtracting number of bytes from moveDest overflow"
+msgSegmentProblem: .asciz "Sign set after arithmetic on moveDest"
 
 readAddr: .word 0
 moveAddr: .long 0
@@ -714,8 +732,13 @@ availTempSpace: .word 0
 initrdLoadAddr: .long  0 # Set to just after the protected-mode kernel.
 initrdFirstBlock: .long 0x3d0800
 initrdFirstLength: .long 0x4000
+initrdFirstLengthBytes: .long 8388608
 initrdSecondBlock: .long 0x3d4e00
 initrdSecondLength: .long 0x2f18
+// Can't get this by adding up the number of segments and multiplying by 512
+// because the last segment can be only partially used.
+// We get this value from `wc -c <initrdfile>`.
+initrdByteSize: .long 0xde27a4
 
 gdtinfo:
     .word gdt_end - gdt - 1 // last byte in table
@@ -729,9 +752,8 @@ gdt_end:
 moveDest: .long 0x100000
 
 
-
 // TODO Allow user to choose command line.
-linuxCmdLine: .asciz "debug root=/dev/sda1 ro"
+linuxCmdLine: .asciz "debug root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro console=ttyS0,115200,8,n"
 # linuxCmdLine: .asciz "auto debug"
 linuxCmdLineSize = . - linuxCmdLine
 .align 512
