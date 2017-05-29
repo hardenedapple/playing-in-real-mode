@@ -209,6 +209,44 @@ secondStage_end_segment = secondStage_end_addr / 0x10
 #define pref_address          secondStage_end + 0x258
 #define init_size             secondStage_end + 0x260
 #define handover_offset       secondStage_end + 0x264
+// setup_sects           0x89f1
+// root_flags            0x89f2
+// syssize               0x89f4
+// ram_size              0x89f8
+// vid_mode              0x89fa
+// root_dev              0x89fc
+// boot_flag             0x89fe
+// jump                  0x8a00
+// header                0x8a02
+// version               0x8a06
+// realmode_swtch        0x8a08
+// start_sys_seg         0x8a0c
+// kernel_version        0x8a0e
+// type_of_loader        0x8a10
+// loadflags             0x8a11
+// setup_move_size       0x8a12
+// code32_start          0x8a14
+// ramdisk_image         0x8a18
+// ramdisk_size          0x8a1c
+// bootsect_kludge       0x8a20
+// heap_end_ptr          0x8a24
+// ext_loader_ver        0x8a26
+// ext_loader_type       0x8a27
+// cmd_line_ptr          0x8a28
+// initrd_addr_max       0x8a2c
+// kernel_alignment      0x8a30
+// relocatable_kernel    0x8a34
+// min_alignment         0x8a35
+// xloadflags            0x8a36
+// cmdline_size          0x8a38
+// hardware_subarch      0x8a3c
+// hardware_subarch_data 0x8a40
+// payload_offset        0x8a48
+// payload_length        0x8a4c
+// setup_data            0x8a50
+// pref_address          0x8a58
+// init_size             0x8a60
+// handover_offset       0x8a64
 
 #define HEAP_SEGMENTS 0x40
 secondStage_start:
@@ -387,6 +425,8 @@ readLinux:
 1:
     // ramdisk_size -- size of initial ramdisk or ramfs
     //                   leave at zero if no initial ramdisk.
+    //                   We set this to the correct value below, but it's nice
+    //                   to double check everything is as expected here.
     movl ramdisk_size, %eax
     cmpl $0, %eax
     je 1f
@@ -437,6 +477,12 @@ readLinux:
     //   a relocating bootloader should attempt to load at this address.
     //   I'm not a relocating bootloader -- I believe I can ignore this.
 
+    // init_size -- space after pref_address that the kernel needs.
+    //              I don't do anything with this, maybe I should
+    //              programmatically check this space is free (maybe the kernel
+    //              already does it).
+    //              I know from manual inspection that pref_address is after
+    //              everything I load into memory.
     // handover_offset -- for EFI, can ignore.
 
     // Find how much space we can use at a time to load in code that has to be
@@ -542,19 +588,6 @@ setInitRdFlags:
     ERRMSG(msgInitrdLowAddr)
     jmp .
 1:
-    // init_size -- amount of linear contiguous memory starting at the kernel
-    // runtime start address, that the kernel needs before it's capable of
-    // examining its memory map.
-    // TODO Should calculate the load address given these values.
-    movl init_size, %eax
-    addl protectedLoadAddr, %eax
-    movl initrdLoadAddr, %ebx
-    cmpl %eax, %ebx
-    ja 1f
-    ERRMSG(msgNotEnoughSpare)
-    jmp .
-1:
-
     // ramdisk_size -- size of initial ramdisk or ramfs
     // Can't know this without parsing the filesystem information.
     // I got this number from `wc -c`
@@ -569,11 +602,14 @@ setInitRdFlags:
 
 readInitrd:
     // transfer buffer is already set before calling this function.
-    xorw %ax, %ax
+    // init_size -- amount of linear contiguous memory starting at the kernel
+    // runtime start address, that the kernel needs before it's capable of
+    // examining its memory map.
+
     // moveDest currently points to the end of the kernel.
-    // Change it to point to where we want the ramdisk loaded.
-    movl initrdLoadAddr, %eax
-    movl %eax, moveDest
+    // Put the ramdisk right after it -- no reason not to.
+    movl moveDest, %eax
+    movl %eax, initrdLoadAddr
     call setInitRdFlags
 
     movl initrdFirstBlock, %eax
@@ -582,8 +618,8 @@ readInitrd:
     movl %eax, numSegments
     call readAndMove
 
-    // TODO This shouldn't be necessary, but getting things to work without
-    // hard-coding is harder than with. I'll get round to it later.
+    // TODO This shouldn't be necessary, but making readandMove leave the
+    // correct value in moveDest is a little painful, so I'm hard-coding.
     movl initrdLoadAddr, %eax
     addl initrdFirstLengthBytes, %eax
     movl %eax, moveDest
@@ -743,7 +779,7 @@ availTempSpace: .word 0
 // the initrd_addr_max value, and the max memory address of the kernel.
 // NOTE: This was manually taken from 
 //      sudo hdparm --fibmap /mnt/usb/boot/initrd.img-3.16.0-4-686-pae
-initrdLoadAddr: .long 0xb00000
+initrdLoadAddr: .long 0
 initrdFirstBlock: .long 0x3d0800
 initrdFirstLength: .long 0x4000
 initrdFirstLengthBytes: .long 8388608
@@ -767,8 +803,9 @@ moveDest: .long 0x100000
 
 
 // TODO Allow user to choose command line.
-linuxCmdLine: .asciz "debug root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro console=ttyS0,115200,8,n"
+# linuxCmdLine: .asciz "debug root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 ro console=ttyS0,115200,8,n"
 # linuxCmdLine: .asciz "root=UUID=ff9be8c0-4821-4d00-8046-78db6f7303b4 auto debug"
+linuxCmdLine: .asciz "auto debug"
 linuxCmdLineSize = . - linuxCmdLine
 .align 512
 secondStage_end:
