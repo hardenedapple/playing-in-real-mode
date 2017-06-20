@@ -1,29 +1,42 @@
 Small list of rolling targets.
 
 Install arch linux to a USB stick
-    At the moment, booting seems troublesome, but using the GRUB command line
-    works nicely.
-        ls
-            (hd0,)(hd0,msdos1)...
-        set root=(hd0,msdos1)
-        insmod linux
-        linux /boot/vmlinuz-linux root=/dev/sdb1
-        initrd /boot/initramfs-linux.img
-        boot
+    Copy config to USB stick.
+    Compile kernel with new configuration on second laptop.
+    Copy kernel to disk image
+    Attempt to boot with GRUB via qemu
 
     Backup the disk image (save progress ...)
-        dd if=/dev/sdb of=archlinux_install bs=4M
+        dd if=/dev/sdb of=images/usb_arch.img bs=4M
 
-    Check runs fine on my laptop
-    Check runs fine under qemu and bochs
-    Compile the kernel manually, without an initramfs
-        check runs fine on my laptop & under qemu & under bochs
-    Boot with the sebastian-minimal bootloader
-    Boot with my version that worked the same.
-    Compile the kernel manually *with* an initramfs.
-        Don't just revert, as I want to know for certain what the source code
-        is, so I can follow the execution in bochs.
-    Attempt to boot with my bootloader using initramfs.
+    Boot it again through qemu (just to double check that everything works).
+
+    Install the new kernel onto the USB stick.
+    Boot via the laptop to make sure this works.
+        will have to do this manually via the GRUB command line
+        1) Need to add the line 'rootfstype=ext3' to kernel parameters.
+        2) Need to use /dev/sdb1 instead of UUID in kernel parameters.
+        
+        Worked while using
+            linux /boot/vmlinuz-linux root=/dev/sdb1 rootfstype=ext3 rw auto
+
+    Backup the disk image (save progress ...)
+        make sure to keep the previous one around -- will want to use that in
+        the future.
+        dd if=/dev/sdb of=images/arch_usb_noinitrd.img bs=4M
+
+    Find the block positions of the kernel on the USB image and hard-code them
+    into my bootloader.
+
+    Attempt to boot this kernel using sebastian-minimal-bootloader.asm
+        (know this apparently works -- he must have at least gotten it to work
+        once)
+
+    Attempt to boot this kernel using the version of my bootloader that didn't
+    try to do anything with an initramfs.
+    
+    Attempt to boot the previous image (i.e. the one with an initramfs) with
+    the version of my bootloader that tries to work with an initramfs.
 
 Currently not booting, and failing with the following message:
     Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)

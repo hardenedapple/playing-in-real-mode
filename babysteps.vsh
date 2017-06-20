@@ -8,6 +8,10 @@ vshcmd: > gcc -E boot.S > boot.asm
 vshcmd: > as boot.asm -o boot.o
 vshcmd: > ld --oformat=binary -Ttext 0x7c00 boot.o -o boot
 vshcmd: > dd if=boot of=totalUSB.img conv=notrunc
+bootloader [15:25:31] $ bootloader [15:25:31] $ bootloader [15:25:31] $ 6+0 records in
+6+0 records out
+3072 bytes (3.1 kB, 3.0 KiB) copied, 0.000223911 s, 13.7 MB/s
+bootloader [15:25:31] $ 
 vshcmd: > dd if=otherBIOSes/debian_GRUB.img of=boot bs=1 count=66 seek=446 skip=446 conv=notrunc
 vshcmd: > qemu-system-x86_64 -drive file=totalUSB.img,format=raw -serial stdio
 bootloader [12:10:06] $ bootloader [12:10:06] $ bootloader [12:10:06] $ 6+0 records in
@@ -367,6 +371,83 @@ If you think option (3) is likely then you can try debugging your guest with the
 Execution cannot continue; stopping here.
 
 bootloader [12:10:19] $ 
+vshcmd: > sudo chown matthew:users images/usb_arch.img
+[sudo] password for matthew: 
+bootloader [13:02:00] $ 
+vshcmd: > qemu-system-x86_64 -usbdevice disk:format=raw:images/usb_arch_initrdfree.img
+bootloader [10:41:58] $ 
+vshcmd: > git status
+On branch master
+Your branch and 'origin/master' have diverged,
+and have 2 and 1 different commits each, respectively.
+  (use "git pull" to merge the remote branch into yours)
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   babysteps.vsh
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+vshcmd: > rm -r VERSION bin buildconfig config init init_functions lib lib64 multiboot_setup.asm mydata nasmboot.asm2 oldboot protected_registers.asm sbin tmp_protected_mode_boot.S usr/ x86_gcc_options.txt
+rm: cannot remove 'VERSION': No such file or directory
+rm: cannot remove 'bin': No such file or directory
+rm: cannot remove 'buildconfig': No such file or directory
+rm: cannot remove 'config': No such file or directory
+rm: cannot remove 'init': No such file or directory
+rm: cannot remove 'init_functions': No such file or directory
+rm: cannot remove 'lib': No such file or directory
+rm: cannot remove 'lib64': No such file or directory
+rm: cannot remove 'multiboot_setup.asm': No such file or directory
+rm: cannot remove 'mydata': No such file or directory
+rm: cannot remove 'nasmboot.asm2': No such file or directory
+rm: cannot remove 'oldboot': No such file or directory
+rm: cannot remove 'protected_registers.asm': No such file or directory
+rm: cannot remove 'sbin': No such file or directory
+rm: cannot remove 'tmp_protected_mode_boot.S': No such file or directory
+rm: cannot remove 'usr/': No such file or directory
+rm: cannot remove 'x86_gcc_options.txt': No such file or directory
+bootloader [14:11:49] $ 
+vshcmd: > git status
+On branch master
+Your branch and 'origin/master' have diverged,
+and have 2 and 1 different commits each, respectively.
+  (use "git pull" to merge the remote branch into yours)
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   babysteps.vsh
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+	NOTES.txt
+	README.md
+	bochsout.txt
+	boot
+	boot.asm
+	bootloaderspace
+	leave_and_jump.asm
+	otherBIOSes/
+	saved_docs/
+	theirdata
+
+no changes added to commit (use "git add" and/or "git commit -a")
+bootloader [14:11:57] $ 
+vshcmd: >
+vshcmd: > fdisk -l images/usb_arch.img
+[1mDisk images/usb_arch.img: 3.8 GiB, 4009754624 bytes, 7831552 sectors
+[0mUnits: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x926234e6
+
+[1mDevice[0m               [1mBoot[0m [1mStart[0m [1m    End[0m [1mSectors[0m [1m Size[0m [1mId[0m [1mType[0m
+images/usb_arch.img1 *     2048 7831551 7829504  3.8G 83 Linux
+bootloader [13:49:47] $ 
 vshcmd: > asbytes att '.code16; transferBuffer: movswl transferBuffer, %eax'
 00000000: 66 0f bf 06 00 7c                                f....|
 bootloader [20:31:39] $ 
@@ -2209,3 +2290,208 @@ vshcmd: > x /1hx ds:0x861d
 [bochs]:
 0x000000000000861d <bogus+       0>:	0xffa4
 <bochs:6> 
+vshcmd: > git graph -n 20
+* commit 63b3f18 (HEAD -> master)
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Wed Jun 7 20:33:49 2017 +0100
+| 
+|     Update short-term.txt
+|     
+|     Following a new tack, trying to get a better development environment
+|     set up.
+| 
+* commit 28ab4fd
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Mon May 29 16:24:39 2017 +0100
+| 
+|     Realised init_size means something different
+|     
+|     Remove the change I just did.
+|     There's no reason I can see, that I'm doing something wrong.
+|     
+| *   commit b785313 (refs/stash)
+| |\  Merge: e67c589 c3b0ca4
+| | | Author: Matthew Malcomson <hardenedapple@gmail.com>
+| | | Date:   Wed Jun 7 16:47:14 2017 +0100
+| | | 
+| | |     WIP on (no branch): e67c589 Calculate transferBuffer outside of read32bitLinux
+| | | 
+| | * commit c3b0ca4
+| |/  Author: Matthew Malcomson <hardenedapple@gmail.com>
+| |   Date:   Wed Jun 7 16:47:14 2017 +0100
+| |   
+| |       index on (no branch): e67c589 Calculate transferBuffer outside of read32bitLinux
+| |   
+| | * commit eb2b9d2 (origin/master)
+| |/  Author: Matthew Malcomson <hardenedapple@gmail.com>
+|/|   Date:   Mon May 29 16:24:39 2017 +0100
+| |   
+| |       Realised init_size means something different
+| |       
+| |       Remove the change I just did.
+| |       There's no reason I can see, that I'm doing something wrong.
+| | 
+* | commit c2ae859
+| | Author: Matthew Malcomson <hardenedapple@gmail.com>
+| | Date:   Mon May 29 15:25:59 2017 +0100
+| | 
+| |     Account for init_size value in boot header
+| |     
+| |     I think I had the ramdisk too close to the kernel.
+| |     Not sure, but that's how I read the documentation.
+| | 
+* | commit 92829ca
+| | Author: Matthew Malcomson <hardenedapple@gmail.com>
+| | Date:   Mon May 29 12:23:00 2017 +0100
+| | 
+| |     Getting somewhere on loading initrd
+| |     
+| |     Still having problems, but they're different problems to what I had
+| |     before.
+| | 
+* | commit c57a9a9
+| | Author: Matthew Malcomson <hardenedapple@gmail.com>
+| | Date:   Sun May 28 18:50:16 2017 +0100
+| | 
+| |     Almost working
+| |     
+| |     I can load things into memory by temporarily using protected-mode, at
+| |     the moment I'm not getting the second half of the ramdisk loaded
+| |     correctly.
+| | 
+* | commit 8105aff
+| | Author: Matthew Malcomson <hardenedapple@gmail.com>
+| | Date:   Sun May 28 17:39:30 2017 +0100
+| | 
+| |     Implement own move function
+| |     
+| |     This function allows access anywhere in a linear 32 bit address space,
+| |     it should allow loading an initial ramdisk.
+| | 
+* | commit 028068a
+|/  Author: Matthew Malcomson <hardenedapple@gmail.com>
+|   Date:   Sun May 28 16:47:33 2017 +0100
+|   
+|       Attempt to use movsl in realmode
+|       
+|       Since the instruction uses esi and edi, I thought it might be possible
+|       to move data to higher addresses using that instruction.
+|       
+|       Doesn't work, but was worth a try.
+|   
+| * commit 1e913c1 (ramdisk_attempt)
+|/  Author: Matthew Malcomson <hardenedapple@gmail.com>
+|   Date:   Sun May 28 15:11:42 2017 +0100
+|   
+|       Looked into loading a ramdisk
+|       
+|       It turns out that loading any old ramdisk and kernel is more difficult
+|       than I imagined because the BIOS interrupt 0x15 (AH = 0x87) limitation
+|       of 24 bit addresses can be reached.
+|       This is the case of the random debian distribution I've been working
+|       with.
+|       
+|       At some point I'll have to try out compiling ext support in to the
+|       kernel and keeping the partition sector the same, but for now I'll leave
+|       it without having ever booted anything.
+|   
+| * commit 6b9d86c (origin/ramdisk_attempt)
+|/  Author: Matthew Malcomson <hardenedapple@gmail.com>
+|   Date:   Sun May 28 15:11:42 2017 +0100
+|   
+|       Looked into loading a ramdisk
+|       
+|       It turns out that loading any old ramdisk and kernel is more difficult
+|       than I imagined because the BIOS interrupt 0x15 (AH = 0x87) limitation
+|       of 24 bit addresses can be reached.
+|       This is the case of the random debian distribution I've been working
+|       with.
+|       
+|       At some point I'll have to try out compiling ext support in to the
+|       kernel and keeping the partition sector the same, but for now I'll leave
+|       it without having ever booted anything.
+| 
+* commit e67c589
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Sun May 28 13:39:35 2017 +0100
+| 
+|     Calculate transferBuffer outside of read32bitLinux
+|     
+|     This will help making the readInitrd function in the future.
+| 
+* commit e862b2c
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Sun May 28 13:14:21 2017 +0100
+| 
+|     Separate out the reading & moving function
+|     
+|     This is so that in the future working with a ramdisk can use that code.
+| 
+* commit d312016
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Sun May 28 12:42:32 2017 +0100
+| 
+|     Use macros to identify offsets
+| 
+* commit 01f5775
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Sat May 27 16:07:53 2017 +0100
+| 
+|     Gotten to same failing stage as minimal bootloader
+|     
+|     There are still pretty major problems to solve, but at least now I have
+|     a bunch of writing on the screen.
+| 
+* commit 4271a0f
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Thu May 25 17:24:40 2017 +0100
+| 
+|     Save my current targets, give up for now
+|     
+|     At the moment I don't know what's wrong with the code, and I don't
+|     really care that much.
+|     I may come back to this in the future, but for now I'll move on to more
+|     fun things.
+| 
+* commit 1f03f09
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Thu May 25 17:18:12 2017 +0100
+| 
+|     Fix setting 'loadflags' bits
+|     
+|     Also use the HEAP_SEGMENTS macro instead of directly putting 0x40 in
+|     everywhere.
+| 
+* commit 7db5520
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Thu May 25 17:16:03 2017 +0100
+| 
+|     Change comment leader because now using CPP
+| 
+* commit df2e362
+| Author: Matthew Malcomson <hardenedapple@gmail.com>
+| Date:   Thu May 25 15:55:04 2017 +0100
+| 
+|     Can read kernel into memory, and jump there
+|     
+|     Currently trying to find out what values I've set up incorrectly (and
+|     hence why it's not booting nicely).
+bootloader [11:59:20] $ 
+vshcmd: > grep Documentation *
+Binary file arch_install.img matches
+boot.S:    //   http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt#L85
+boot.S:    // Following the below vimcmd: e +965 Linux_Documentation_x86_boot.txt
+boot.S:    // If field is zero, real value is 4 http://lxr.linux.no/linux+*/Documentation/x86/boot.txt#L243
+boot.S:    //                    vimcmd: e +498 Linux_Documentation_x86_boot.txt
+boot.S:    //   vimcmd: e +630 Linux_Documentation_x86_boot.txt
+boot.S:    // vimcmd: e +897 Linux_Documentation_x86_boot.txt
+disk.asm:    // http://lxr.linux.no/linux+*/Documentation/x86/boot.txt#L92
+grep: images: Is a directory
+Linux_Documentation_x86_boot.txt:Documentation/admin-guide/kernel-parameters.rst to make sure they will not
+grep: otherBIOSes: Is a directory
+grep: saved_docs: Is a directory
+short-term.txt:    http://lxr.linux.no/#linux+v2.6.25.6/Documentation/i386/boot.txt
+short-term.txt:    http://lxr.linux.no/#linux+v4.10.1/Documentation/x86/boot.txt
+grep: temp: Is a directory
+Binary file totalUSB.img matches
+bootloader [12:01:05] $ 
